@@ -7,7 +7,9 @@ import pandas as pd
 import copy as cp
 from rdkit import Chem
 from rdkit.Chem import AllChem
-import pdb
+
+random.seed(777)
+np.random.seed(777)
 
 def inchi_to_smiles(inchi_list):
     """
@@ -51,7 +53,6 @@ class FingerprintGenerator:
                     )  # Convert to NumPy array
                     fingerprints.append(fp_array)
                 else:
-                    pdb.set_trace()
                     print(f"Could not generate a molecule from SMILES: {smiles}")
                     fingerprints.append(np.array([None]))
 
@@ -85,7 +86,6 @@ class directaryl:
         self.radius = 2
         self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
         dataset_url = "https://raw.githubusercontent.com/doyle-lab-ucla/edboplus/main/examples/publication/BMS_yield_cost/data/PCI_PMI_cost_full.csv"
-        # irrelevant: Time_h , Nucleophile,Nucleophile_Equiv, Ligand_Equiv
         self.data = pd.read_csv(dataset_url)
         self.data = self.data.sample(frac=1).reset_index(drop=True)
         # create a copy of the data
@@ -101,7 +101,6 @@ class directaryl:
         self.data["Base_SMILES"] = inchi_to_smiles(self.data["Base_inchi"].values)
         self.data["Ligand_SMILES"] = inchi_to_smiles(self.data["Ligand_inchi"].values)
         self.data["Solvent_SMILES"] = inchi_to_smiles(self.data["Solvent_inchi"].values)
-        #pdb.set_trace()
         col_0_base = self.ftzr.featurize(self.data["Base_SMILES"])
         col_1_ligand = self.ftzr.featurize(self.data["Ligand_SMILES"])
         col_2_solvent = self.ftzr.featurize(self.data["Solvent_SMILES"])
