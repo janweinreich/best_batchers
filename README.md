@@ -26,6 +26,15 @@ See details on this script below!
 5) Have fun! :)
 
 
+**INSTALL PYHTON ENVIRNMENT**
+
+`conda create -n bohack python`
+
+Then 
+`conda activate bohack`
+
+`pip install -r requirements.txt`
+
 **USE THE INITIALIZATION SCRIPT**
 
 `init_data.py`

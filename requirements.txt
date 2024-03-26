@@ -1,0 +1,6 @@
+numpy
+torch
+scikit-learn
+pandas
+rdkit
+botorch
