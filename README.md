@@ -1,4 +1,4 @@
-# best_batchers
+# Best batchers
 Bayesian Optimization Hackathon for Chemistry and Materials, Project 15: Adaptive Batch Sizes for Bayesian Optimization of Reaction Yield
 Project overview and goal:
 
@@ -8,6 +8,7 @@ https://github.com/AC-BO-Hackathon/ac-bo-hackathon.github.io/blob/main/_projects
 
 **Project challenge in a nutshell:**
 
+Quite often, when performing experiments in batches it costs most of the time for the experimentalist in the lab to prepare the first experiment for a batch. Adding more experiments to the same batch takes less effort (all instruments are checked and ready to go, chemist is already in the lab just has to prepare an additional mixture etc.)
 Considering the “discounted” time of the additional experiments in a batch, and the reduced retraining time when training on multiple samples at once, how do we determine the optimal batch size at each iteration towards maximizing reaction yield in the shortest time?
 
 Eventually: Minimize the time you have to spend in a lab!
