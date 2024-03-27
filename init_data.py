@@ -8,8 +8,10 @@ import copy as cp
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
-random.seed(777)
-np.random.seed(777)
+
+SEED=777
+random.seed(SEED)
+np.random.seed(SEED)
 
 def inchi_to_smiles(inchi_list):
     """
@@ -86,7 +88,7 @@ class directaryl:
         self.radius = 2
         self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
         dataset_url = "https://raw.githubusercontent.com/doyle-lab-ucla/edboplus/main/examples/publication/BMS_yield_cost/data/PCI_PMI_cost_full.csv"
-        self.data = pd.read_csv(dataset_url)
+        self.data = pd.read_csv(dataset_url, verbose=True)
         self.data = self.data.sample(frac=1).reset_index(drop=True)
         # create a copy of the data
         data_copy = self.data.copy()
@@ -241,16 +243,25 @@ class Evaluation_data:
             exp_holdout,
         )
 
-DATASET = Evaluation_data()
-bounds_norm = DATASET.bounds_norm
 
-(
-    X_init,
-    y_init,
-    X_candidate,
-    y_candidate, 
-    LIGANDS_INIT,
-    LIGANDS_HOLDOUT,
-    exp_init,
-    exp_holdout,
-) = DATASET.get_init_holdout_data()
+def main():
+    DATASET = Evaluation_data()
+    print(DATASET.X)
+    bounds_norm = DATASET.bounds_norm
+    
+    (
+        X_init,
+        y_init,
+        X_candidate,
+        y_candidate, 
+        LIGANDS_INIT,
+        LIGANDS_HOLDOUT,
+        exp_init,
+        exp_holdout,
+    ) = DATASET.get_init_holdout_data(SEED)
+    
+    print(y_init)
+    return 0
+
+
+if __name__ == '__main__' : main()
