@@ -549,21 +549,19 @@ class Evaluation_data:
             exp_holdout,
         )
 
-DATASET = Evaluation_data()
-bounds_norm = DATASET.bounds_norm
-
-(
-    X_init,
-    y_init,
-    X_pool_fixed,
-    y_pool_fixed,
-    LIGANDS_INIT,
-    LIGANDS_HOLDOUT,
-    exp_init,
-    exp_holdout,
-) = DATASET.get_init_holdout_data(777)
-
-"""![numel.jpeg](data:image/jpeg;base64,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)"""
+### DATASET = Evaluation_data()
+### bounds_norm = DATASET.bounds_norm
+### 
+### (
+###     X_init,
+###     y_init,
+###     X_pool_fixed,
+###     y_pool_fixed,
+###     LIGANDS_INIT,
+###     LIGANDS_HOLDOUT,
+###     exp_init,
+###     exp_holdout,
+### ) = DATASET.get_init_holdout_data(777)
 
 from botorch.acquisition.monte_carlo import qNoisyExpectedImprovement
 from botorch.optim import optimize_acqf_discrete
@@ -598,93 +596,93 @@ def find_indices(X_candidate_BO, candidates):
 
 # Check splits
 
-print(X_init.shape, y_init.shape, X_candidate.shape, y_candidate.shape)
-
-model, _ = update_model(
-    X_init, y_init, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True
-)
-
-
-y_pred = model.posterior(X_pool).mean.detach().flatten().numpy()
-y_std = np.sqrt(model.posterior(X_pool).variance.detach().flatten().numpy())
-
-y_pred = y_pred.flatten()
-y_candidate = y_pool.flatten()
-
-X_train = np.copy(X_init)
-y_train = np.copy(y_init)
-X_pool = np.copy(X_pool_fixed)
-y_pool = np.copy(y_pool_fixed)
-
-# Start a timer
-fixed_time = 1
-overhead_time = overhead_factor * fixed_time
-training_time = 2
-total_time = 0
-
-# Count experiments
-n_experiments = 0
-
-for _ in range(100):
-
-  # Add fixed time
-  total_time += fixed_time
-
-  # Select batch size, for now dummy as 5
-  # Here is where the fun begins! Including the calls below
-  q = 5
-
-  # Set up aqf
-  qNEI = qNoisyExpectedImprovement(model, torch.tensor(X_train), sampler)
-  X_candidate, _ = optimize_acqf_discrete(
-    acq_function=qNEI,
-    bounds=bounds_norm,
-    q=q,
-    choices=X_pool,
-    unique=True,
-    num_restarts=NUM_RESTARTS,
-    raw_samples=RAW_SAMPLES,
-    sequential=False,
-  )
-
-  # See how selected experiments look at the moment
-  y_pred = model.posterior(X_candidate).mean.detach().flatten().numpy()
-  y_std = np.sqrt(model.posterior(X_candidate).variance.detach().flatten().numpy())
-
-  # See how they actually look
-  indices = find_indices(X_pool, X_candidate)
-  indices_keep = np.setdiff1d(np.arange(X_pool.shape[0]), indices)
-  y_candidate = y_pool[indices]
-
-  # We have sampled the candidates, so we pay the overhead time n-1 times
-  total_time += overhead_time*(y_candidate.shape[0] -1)
-
-  # We also count the number of experiments conducted
-  n_experiments += y_candidate.shape[0]
-
-  # Remove from pool
-  X_pool = X_pool[indices_keep]
-  y_pool = y_pool[indices_keep]
-
-  # If we got good performance, we are done
-  if any(y_candidate > 99.0 ): # :)
-    print("We found some good candidate! :)")
-    print(y_candidate)
-    break
-  else:
-    print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
-    print(y_candidate)
-
-  # If not, sample points and retrain
-  X_train = np.vstack([X_train, X_candidate])
-  y_train = np.concatenate([y_train, y_candidate])
-  model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
-
-  # And also add the time it takes to train, which can be important
-  total_time += training_time
-
-print(f"The total time for the optimization was {total_time} for a total of {n_experiments} experiments!")
-
+# print(X_init.shape, y_init.shape, X_candidate.shape, y_candidate.shape)
+#####
+#####model, _ = update_model(
+#####    X_init, y_init, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True
+#####)
+#####
+#####
+#####y_pred = model.posterior(X_pool).mean.detach().flatten().numpy()
+#####y_std = np.sqrt(model.posterior(X_pool).variance.detach().flatten().numpy())
+#####
+#####y_pred = y_pred.flatten()
+#####y_candidate = y_pool.flatten()
+#####
+#####X_train = np.copy(X_init)
+#####y_train = np.copy(y_init)
+#####X_pool = np.copy(X_pool_fixed)
+#####y_pool = np.copy(y_pool_fixed)
+#####
+###### Start a timer
+#####fixed_time = 1
+#####overhead_time = overhead_factor * fixed_time
+#####training_time = 2
+#####total_time = 0
+#####
+###### Count experiments
+#####n_experiments = 0
+#####
+#####for _ in range(100):
+#####
+#####  # Add fixed time
+#####  total_time += fixed_time
+#####
+#####  # Select batch size, for now dummy as 5
+#####  # Here is where the fun begins! Including the calls below
+#####  q = 5
+#####
+#####  # Set up aqf
+#####  qNEI = qNoisyExpectedImprovement(model, torch.tensor(X_train), sampler)
+#####  X_candidate, _ = optimize_acqf_discrete(
+#####    acq_function=qNEI,
+#####    bounds=bounds_norm,
+#####    q=q,
+#####    choices=X_pool,
+#####    unique=True,
+#####    num_restarts=NUM_RESTARTS,
+#####    raw_samples=RAW_SAMPLES,
+#####    sequential=False,
+#####  )
+#####
+#####  # See how selected experiments look at the moment
+#####  y_pred = model.posterior(X_candidate).mean.detach().flatten().numpy()
+#####  y_std = np.sqrt(model.posterior(X_candidate).variance.detach().flatten().numpy())
+#####
+#####  # See how they actually look
+#####  indices = find_indices(X_pool, X_candidate)
+#####  indices_keep = np.setdiff1d(np.arange(X_pool.shape[0]), indices)
+#####  y_candidate = y_pool[indices]
+#####
+#####  # We have sampled the candidates, so we pay the overhead time n-1 times
+#####  total_time += overhead_time*(y_candidate.shape[0] -1)
+#####
+#####  # We also count the number of experiments conducted
+#####  n_experiments += y_candidate.shape[0]
+#####
+#####  # Remove from pool
+#####  X_pool = X_pool[indices_keep]
+#####  y_pool = y_pool[indices_keep]
+#####
+#####  # If we got good performance, we are done
+#####  if any(y_candidate > 99.0 ): # :)
+#####    print("We found some good candidate! :)")
+#####    print(y_candidate)
+#####    break
+#####  else:
+#####    print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
+#####    print(y_candidate)
+#####
+#####  # If not, sample points and retrain
+#####  X_train = np.vstack([X_train, X_candidate])
+#####  y_train = np.concatenate([y_train, y_candidate])
+#####  model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
+#####
+#####  # And also add the time it takes to train, which can be important
+#####  total_time += training_time
+#####
+#####print(f"The total time for the optimization was {total_time} for a total of {n_experiments} experiments!")
+#####
 def bo_above(q, seed):
 
   # Initialize data from dataset
@@ -791,6 +789,7 @@ def bo_above(q, seed):
 q_arr = range(3,10)
 #example = bo_above(3)
 timings_all =  np.zeros([10,7,2])
+timings_all[0] = [bo_above(i, 10) for i in q_arr]
 timings_all[1] = [bo_above(i, 1) for i in q_arr]
 timings_all[2] = [bo_above(i, 2) for i in q_arr]
 timings_all[3] = [bo_above(i, 3) for i in q_arr]
@@ -800,7 +799,6 @@ timings_all[6] = [bo_above(i, 6) for i in q_arr]
 timings_all[7] = [bo_above(i, 7) for i in q_arr]
 timings_all[8] = [bo_above(i, 8) for i in q_arr]
 timings_all[9] = [bo_above(i, 9) for i in q_arr]
-timings_all[0] = [bo_above(i, 10) for i in q_arr]
 
 timings_all_mean = timings_all.mean(axis=0)
 timings_exps = timings_all_mean
@@ -817,6 +815,7 @@ def compute_cost(rt, ot, n_exp, n_iter):
   total_cost += (n_exp - n_iter) * ot # Sum of the overheads
   return total_cost
 
+j=0
 for n_exp, n_iter in timings_exps :
   x, y = np.meshgrid(rt_arr, ot_arr)
   tt_arr = compute_cost(x, y, n_exp, n_iter)
@@ -825,8 +824,11 @@ for n_exp, n_iter in timings_exps :
   plt.pcolormesh(rt_arr, ot_arr, tt_arr)
   plt.title('Total time as a function of %overhead and %training')
   plt.colorbar()
-  plt.show()
+  #plt.show()
+  plt.savefig(f"{j}_rt-ot_map.svg")
+  j+=1
 
+plt.figure()
 z = np.zeros((len(q_arr),25))
 x, y = np.meshgrid(rt_arr, ot_arr)
 for i, (n_exp, n_iter) in enumerate(timings_exps) :
@@ -835,4 +837,5 @@ for i, (n_exp, n_iter) in enumerate(timings_exps) :
 plt.plot(p,z)
 plt.title('Total time as a function of q')
 plt.legend()
-plt.show()
+#plt.show()
+plt.savefig('time-vs-q_plot.svg')
