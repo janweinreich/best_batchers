@@ -253,4 +253,6 @@ bounds_norm = DATASET.bounds_norm
     LIGANDS_HOLDOUT,
     exp_init,
     exp_holdout,
-) = DATASET.get_init_holdout_data()
+) = DATASET.get_init_holdout_data(SEED=777)
+
+
