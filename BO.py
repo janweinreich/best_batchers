@@ -290,8 +290,8 @@ class Surrogate_Model:
                 self.covar_module = ScaleKernel(kernel)
 
         self.gp = InternalGP(self.X_train_tensor, self.y_train_tensor, kernel)
-        if self.kernel_type == "Linear" or self.kernel_type == "Tanimoto":
-            self.gp.likelihood.noise_constraint = gpytorch.constraints.GreaterThan(
+
+        self.gp.likelihood.noise_constraint = gpytorch.constraints.GreaterThan(
                 1e-3
             )
 
