@@ -385,7 +385,7 @@ class directaryl:
         self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
         dataset_url = "https://raw.githubusercontent.com/doyle-lab-ucla/edboplus/main/examples/publication/BMS_yield_cost/data/PCI_PMI_cost_full.csv"
         self.data = pd.read_csv(dataset_url)
-        self.data = self.data.sample(frac=1).reset_index(drop=True)
+        self.data = self.data.sample(frac=1, random_state=666).reset_index(drop=True)
         # create a copy of the data
         data_copy = self.data.copy()
         # remove the Yield column from the copy
@@ -660,6 +660,7 @@ def bo_above(q, seed, max_iterations=100):
   n_iter = 0
 
   for i in range(max_iterations):
+    print(f'{i=} {q=} {seed=}')
     is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
     n_experiments += n_experiments_incr
     n_iter += 1
