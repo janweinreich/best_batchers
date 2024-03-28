@@ -14,7 +14,7 @@ from botorch.acquisition.monte_carlo import qNoisyExpectedImprovement
 from botorch.optim import optimize_acqf_discrete
 from botorch.sampling import SobolQMCNormalSampler
 
-
+from BO_utils import update_model
 
 
 random.seed(777)
