@@ -505,11 +505,11 @@ class Evaluation_data:
         self.bounds_norm = self.bounds_norm.to(dtype=torch.float32)
 
         if not check_entries(self.X):
-            print("###############################################")
-            print(
-                "Entries of X are not between 0 and 1. Adding MinMaxScaler to the pipeline."
-            )
-            print("###############################################")
+            #print("###############################################")
+            #print(
+            #    "Entries of X are not between 0 and 1. Adding MinMaxScaler to the pipeline."
+            #)
+            #print("###############################################")
 
             self.scaler_X = MinMaxScaler()
             self.X = self.scaler_X.fit_transform(self.X)
@@ -656,14 +656,15 @@ def bo_inner(model, sampler, bounds_norm, q,
     success = any(y_candidate > yield_thr)
 
     if success:
-      print("We found some good candidate! :)")
+      #print("We found some good candidate! :)")
+        pass
     else:
-      print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
+      #print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
       X_train = np.vstack([X_train, X_candidate])
       y_train = np.concatenate([y_train, y_candidate])
       model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
 
-    print(y_candidate)
+    #print(y_candidate)
     return success, n_experiments, model, X_train, y_train, X_pool, y_pool
 
  
@@ -806,12 +807,13 @@ def bo_above_old(q, seed, max_iterations=100):
 
     # If we got good performance, we are done
     if any(y_candidate > 99.0 ): # :)
-      print("We found some good candidate! :)")
-      print(y_candidate)
+      #print("We found some good candidate! :)")
+      #print(y_candidate)
       break
     else:
-      print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
-      print(y_candidate)
+      #print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
+      #print(y_candidate)
+        pass
 
     # If not, sample points and retrain
     X_train = np.vstack([X_train, X_candidate])
