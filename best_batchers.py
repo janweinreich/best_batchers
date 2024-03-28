@@ -1,4 +1,3 @@
-# %%
 import numpy as np
 import torch
 import random
@@ -33,7 +32,6 @@ warnings.filterwarnings('ignore', message='.*Input data is not standardized.*', 
 
 warnings.filterwarnings('ignore', category=InputDataWarning)
 
-# %%
 # Set device: Apple/NVIDIA/CPU
 if torch.backends.mps.is_available():
     device = torch.device("mps")
@@ -717,7 +715,7 @@ def bo_above(q, seed, max_iterations=100):
 
   return n_experiments, n_iter
 
-# %% [markdown]
+
 # The old BO loop to check we don't screw up (and "tests")
 # 
 
@@ -823,7 +821,7 @@ def bo_above_old(q, seed, max_iterations=100):
     # And also add the time it takes to train, which can be important
     total_time += training_time
 
-  print(f"The total time for the optimization was {total_time} for a total of {n_experiments} experiments!")
+  #print(f"The total time for the optimization was {total_time} for a total of {n_experiments} experiments!")
   return n_experiments, n_iter
 
 # %%
@@ -842,17 +840,18 @@ max_batch_size = 10  # 10
 n_seeds = 10         # 10
 max_iterations = 100  # 100
 
-q_arr = range(2, max_batch_size+1)
+#q_arr = range(2, max_batch_size+1)
 
-timings_all = np.zeros((n_seeds, len(q_arr), 2))
-for seed in range(n_seeds):
-  timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
+#timings_all = np.zeros((n_seeds, len(q_arr), 2))
+#for seed in range(n_seeds):
+#  timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
   
 
-# %%
-timings_all_mean = timings_all.mean(axis=0)
-timings_exps = timings_all_mean
-print("1st output", timings_exps)
+#save timings
+#np.save("timings_all_baseline.npy", timings_all)
+#timings_all_mean = timings_all.mean(axis=0)
+#timings_exps = timings_all_mean
+#print("1st output", timings_exps)
 
 # %% [markdown]
 # Plots
@@ -881,44 +880,33 @@ def matrix_plot(timings_exps, rt_arr, ot_arr):
   plt.show()
 
 
-  
-for n_exp, n_iter in timings_exps :
-  x, y = np.meshgrid(rt_arr, ot_arr)
-  tt_arr = compute_cost(x, y, n_exp, n_iter)
-  plt.xlabel("Retraining cost %")
-  plt.ylabel("Overhead cost %")
-  plt.pcolormesh(rt_arr, ot_arr, tt_arr)
-  plt.title('Total time as a function of %overhead and %training')
-  plt.colorbar()
-  plt.show()
+if False:
+    for n_exp, n_iter in timings_exps :
+        x, y = np.meshgrid(rt_arr, ot_arr)
+        tt_arr = compute_cost(x, y, n_exp, n_iter)
+        plt.xlabel("Retraining cost %")
+        plt.ylabel("Overhead cost %")
+        plt.pcolormesh(rt_arr, ot_arr, tt_arr)
+        plt.title('Total time as a function of %overhead and %training')
+        plt.colorbar()
+        plt.show()
 
 
-# %%
-z = np.zeros((len(q_arr),25))
-x, y = np.meshgrid(rt_arr, ot_arr)
-for i, (n_exp, n_iter) in enumerate(timings_exps) :
-  p = q_arr
-  z[i,:] = compute_cost(x,y,n_exp,n_iter).flatten()
-plt.plot(p,z)
-plt.title('Total time as a function of q')
-plt.legend()
-plt.show()
+    z = np.zeros((len(q_arr),25))
+    x, y = np.meshgrid(rt_arr, ot_arr)
+    for i, (n_exp, n_iter) in enumerate(timings_exps) :
+        p = q_arr
+        z[i,:] = compute_cost(x,y,n_exp,n_iter).flatten()
+        plt.plot(p,z)
+        plt.title('Total time as a function of q')
+        plt.legend()
+        plt.show()
 
-# %%
-# TODO
 
 #plot distribution of timings for each batch size
 #standart devivation when running different seeds is huge, the optimial batch size depends on the seed (or equavvalently on the
 #trajectory of the BO)
 
-# %%
-timings_exps
-
-# %% [markdown]
-# 
-# BO loop but with `q` depending on iteration number
-
-# %%
 
 def bo_above_flex_batch(q_arr, seed, max_iterations=100):
 
@@ -943,14 +931,33 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
 
 # q_arr = np.arange(10,1,-2)
 # q_arr = np.arange(7,1,-1)
-q_arr = [7] # np.arange(10,1,-1)
 
-n_seeds = 10         # 10
-max_iterations = 100  # 100
 
-timings_all = np.zeros((n_seeds, 2))
+for i in [6, 7]:
+    
+    q_arr = [i] # np.arange(10,1,-1)
+
+
+    timings_all = np.zeros((n_seeds, 2))
+    for seed in range(n_seeds):
+        timings_all[seed] = bo_above(q=i, seed=seed, max_iterations=max_iterations)
+        #bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
+    np.save("timings_all_compare.npy", timings_all)
+    print(timings_all)
+    timings_all_mean = timings_all.mean(axis=0)
+    timings_exps = timings_all_mean
+    print("2nd output", timings_exps)
+    #compute average
+
+
+q_arr = [6, 7] # range(2, max_batch_size+1)
+
+timings_all = np.zeros((n_seeds, len(q_arr), 2))
 for seed in range(n_seeds):
-  timings_all[seed] = bo_above(7, seed=seed, max_iterations=max_iterations)
-  #bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
+  timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
 
-print("2nd output", timings_all)
+print(timings_all)
+timings_all_mean = timings_all.mean(axis=0)
+timings_exps = timings_all_mean
+
+print("2nd output", timings_exps)
