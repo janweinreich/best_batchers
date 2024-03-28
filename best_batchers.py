@@ -840,47 +840,48 @@ max_batch_size = 10  # 10
 n_seeds = 10         # 10
 max_iterations = 100  # 100
 
-#q_arr = range(2, max_batch_size+1)
+q_arr = range(2, max_batch_size+1)
 
-#timings_all = np.zeros((n_seeds, len(q_arr), 2))
-#for seed in range(n_seeds):
-#  timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
+timings_all = np.zeros((len(q_arr),n_seeds,  2))
+for q in q_arr:
+    timings_all[q] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for seed in range(n_seeds)]
   
 
 #save timings
-#np.save("timings_all_baseline.npy", timings_all)
-#timings_all_mean = timings_all.mean(axis=0)
-#timings_exps = timings_all_mean
-#print("1st output", timings_exps)
+np.save("timings_all_baseline.npy", timings_all)
+timings_all_mean = timings_all.mean(axis=1)
+timings_exps = timings_all_mean
+print("1st output", timings_exps)
 
 # %% [markdown]
 # Plots
 # 
 
-# %%
-rt_arr = np.linspace(0.1,1.0,5) # time of retraining as % of experiment baseline time
-ot_arr = np.linspace(0.1,1.0,5) # overhead time per experiment as % of experiment baseline time
-
-def compute_cost(rt, ot, n_exp, n_iter):
-  total_cost = 0.0
-  total_cost += n_iter  # Baseline experiment cost (per iteration)
-  total_cost += rt * n_iter # Retraining cost (per iteration)
-  total_cost += (n_exp - n_iter) * ot # Sum of the overheads
-  return total_cost
-
-
-def matrix_plot(timings_exps, rt_arr, ot_arr):
-  x, y = np.meshgrid(rt_arr, ot_arr)
-  tt_arr = compute_cost(x, y, n_exp, n_iter)
-  plt.xlabel("Retraining cost %")
-  plt.ylabel("Overhead cost %")
-  plt.pcolormesh(rt_arr, ot_arr, tt_arr)
-  plt.title('Total time as a function of %overhead and %training')
-  plt.colorbar()
-  plt.show()
 
 
 if False:
+ 
+    rt_arr = np.linspace(0.1,1.0,5) # time of retraining as % of experiment baseline time
+    ot_arr = np.linspace(0.1,1.0,5) # overhead time per experiment as % of experiment baseline time
+
+    def compute_cost(rt, ot, n_exp, n_iter):
+        total_cost = 0.0
+        total_cost += n_iter  # Baseline experiment cost (per iteration)
+        total_cost += rt * n_iter # Retraining cost (per iteration)
+        total_cost += (n_exp - n_iter) * ot # Sum of the overheads
+        return total_cost
+
+
+    def matrix_plot(timings_exps, rt_arr, ot_arr):
+        x, y = np.meshgrid(rt_arr, ot_arr)
+        tt_arr = compute_cost(x, y, n_exp, n_iter)
+        plt.xlabel("Retraining cost %")
+        plt.ylabel("Overhead cost %")
+        plt.pcolormesh(rt_arr, ot_arr, tt_arr)
+        plt.title('Total time as a function of %overhead and %training')
+        plt.colorbar()
+        plt.show()   
+
     for n_exp, n_iter in timings_exps :
         x, y = np.meshgrid(rt_arr, ot_arr)
         tt_arr = compute_cost(x, y, n_exp, n_iter)
@@ -933,31 +934,19 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
 # q_arr = np.arange(7,1,-1)
 
 
-for i in [6, 7]:
+
     
-    q_arr = [i] # np.arange(10,1,-1)
+q_arr = [7, 7] # np.arange(10,1,-1)
 
 
-    timings_all = np.zeros((n_seeds, 2))
-    for seed in range(n_seeds):
-        timings_all[seed] = bo_above(q=i, seed=seed, max_iterations=max_iterations)
-        #bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
-    np.save("timings_all_compare.npy", timings_all)
-    print(timings_all)
-    timings_all_mean = timings_all.mean(axis=0)
-    timings_exps = timings_all_mean
-    print("2nd output", timings_exps)
-    #compute average
-
-
-q_arr = [6, 7] # range(2, max_batch_size+1)
-
-timings_all = np.zeros((n_seeds, len(q_arr), 2))
+timings_all = np.zeros((n_seeds, 2))
 for seed in range(n_seeds):
-  timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
-
+    timings_all[seed] = bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
+    #bo_above(q=i, seed=seed, max_iterations=max_iterations)
+    #bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
+np.save("timings_all_compare.npy", timings_all)
 print(timings_all)
 timings_all_mean = timings_all.mean(axis=0)
 timings_exps = timings_all_mean
-
 print("2nd output", timings_exps)
+#compute average
