@@ -223,6 +223,8 @@ class Evaluation_data:
         np.random.seed(SEED)
 
         indices_init = self.where_worst_ligand[:200]
+        # Reduce the number of initial experiments to 48
+        indices_init = np.random.choice(self.where_worst_ligand[:200], size=48, replace=False)
         exp_init = self.experiments[indices_init]
         indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
 
@@ -281,15 +283,15 @@ def bo_inner(model, sampler, bounds_norm, q, X_train, y_train, X_pool, y_pool, y
     The inner loop of the BO algorithm. This function selects the next batch of
     candidates based on the qNEI acquisition function (qNoisyExpectedImprovement) and updates the model
     Args:
-        model:
-        sampler:
-        bounds_norm:
-        q:
-        X_train:
-        y_train:
-        X_pool:
-        y_pool:
-        yield_thr: 99 (default)
+        model: model object
+        sampler: SobolQMCNormalSampler
+        bounds_norm: bounds for the ac
+        q: batch size
+        X_train: training data
+        y_train: training labels
+        X_pool: pool data
+        y_pool: pool labels
+        yield_thr: 99 (default)  # seems high, since the error of measurement will be much higher than 1 %
 
     Returns:
 
@@ -405,6 +407,7 @@ def bo_above(q, seed, max_iterations=100):
     # Count iterations of the BO cycle
     # Exapmle: With a batch size of 10 and n_iter of 5 we would have 50 additional experiments
     n_iter = 0
+    # Is not equal to max_iterations if we find a good candidate before
 
     for i in range(max_iterations):
         is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, sampler, bounds_norm, q,
