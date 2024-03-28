@@ -354,6 +354,12 @@ def init_stuff(seed=777):
     DATASET = Evaluation_data()
     bounds_norm = DATASET.bounds_norm
 
+    # Our common starting point for data
+    # X_init contains 144 datapoints as tensor, feature length 1538
+    # y_init contains 144 labels as tensor
+    # Pool contains datapoints which can be requested / sampled by accquisition function and sampler
+    # X_pool_fixed contains 1584 datapoints as tensor, feature length 1538
+    # y_pool_fixed contains 1584 labels as tensor
     (
         X_init,
         y_init,
@@ -364,6 +370,7 @@ def init_stuff(seed=777):
         _,
         _,
     ) = DATASET.get_init_holdout_data(seed)
+
 
     # Construct initial shitty model
     model, _ = update_model(
@@ -392,10 +399,11 @@ def bo_above(q, seed, max_iterations=100):
     """
     model, X_train, y_train, X_pool, y_pool = init_stuff(seed)
 
-    # Count experiments
+    # Count total experiments needed
     n_experiments = 0
 
-    # Count iterations
+    # Count iterations of the BO cycle
+    # Exapmle: With a batch size of 10 and n_iter of 5 we would have 50 additional experiments
     n_iter = 0
 
     for i in range(max_iterations):
