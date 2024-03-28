@@ -383,9 +383,9 @@ def init_stuff(seed=777):
     X_pool = np.copy(X_pool_fixed)
     y_pool = np.copy(y_pool_fixed)
 
-    return model, X_train, y_train, X_pool, y_pool
+    return model, X_train, y_train, X_pool, y_pool, bounds_norm
 
-def bo_above(q, seed, max_iterations=100):
+def bo_above(q, seed, yield_thr=99, max_iterations=100):
     """
     Runs the BO loop with a fixed batch size q.
     Number of experiment is counter for the amount of experiments conducted.
@@ -397,7 +397,7 @@ def bo_above(q, seed, max_iterations=100):
     Returns: number of experiments, number of iterations
 
     """
-    model, X_train, y_train, X_pool, y_pool = init_stuff(seed)
+    model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
 
     # Count total experiments needed
     n_experiments = 0
@@ -409,7 +409,7 @@ def bo_above(q, seed, max_iterations=100):
     for i in range(max_iterations):
         is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, sampler, bounds_norm, q,
                                                                                          X_train, y_train, X_pool,
-                                                                                         y_pool)
+                                                                                         y_pool, yield_thr=yield_thr)
         n_experiments += n_experiments_incr
         n_iter += 1
         if is_found is True:
@@ -418,24 +418,31 @@ def bo_above(q, seed, max_iterations=100):
     return n_experiments, n_iter
 
 
-DATASET = Evaluation_data()
-bounds_norm = DATASET.bounds_norm
+# BO loop but with q depending on iteration number
 
-(
-    X_init,
-    y_init,
-    X_pool_fixed,
-    y_pool_fixed,
-    LIGANDS_INIT,
-    LIGANDS_HOLDOUT,
-    exp_init,
-    exp_holdout,
-) = DATASET.get_init_holdout_data(777)
+def bo_above_flex_batch(q_arr, seed, yield_thr=99.0, max_iterations=100):
+    model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
 
-print("Current state")
+    # Count experiments
+    n_experiments = 0
+
+    for i in range(max_iterations):
+        q = q_arr[i] if i < len(q_arr) else q_arr[-1]
+        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, sampler, bounds_norm, q,
+                                                                                         X_train, y_train, X_pool,
+                                                                                         y_pool)
+        n_experiments += n_experiments_incr
+        if is_found is True:
+            break
+
+    return n_experiments, i + 1
+
+
+
+
+
 
 # Code from Notebook
-
 NUM_RESTARTS = 20
 RAW_SAMPLES = 512
 
@@ -452,12 +459,27 @@ max_iterations = 100  # 100
 
 q_arr = range(2, max_batch_size+1)
 
-timings_all = np.zeros((n_seeds, len(q_arr), 2))
-for seed in range(n_seeds):
-  timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
+for yield_thr in [99., 99.9]:
+    timings_all = np.zeros((n_seeds, len(q_arr), 2))
+    for seed in range(n_seeds):
+      timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations, yield_thr=yield_thr) for q in q_arr]
 
-timings_all_mean = timings_all.mean(axis=0)
+    timings_all_mean = timings_all.mean(axis=0)
+    timings_all_std = timings_all.std(axis=0)
+
+    print()
+    print()
+    print()
+    print(yield_thr)
+    print(timings_all_mean)
+    print(timings_all_std)
+
+
+if 1:
+    exit(0)
+
 timings_exps = timings_all_mean
+
 
 
 rt_arr = np.linspace(0.1,1.0,5) # time of retraining as % of experiment baseline time
@@ -490,24 +512,6 @@ for n_exp, n_iter in timings_exps :
   plt.legend()
   plt.show()
 
-# BO loop but with q depending on iteration number
-
-def bo_above_flex_batch(q_arr, seed, max_iterations=100):
-    model, X_train, y_train, X_pool, y_pool = init_stuff(seed)
-
-    # Count experiments
-    n_experiments = 0
-
-    for i in range(max_iterations):
-        q = q_arr[i] if i < len(q_arr) else q_arr[-1]
-        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, sampler, bounds_norm, q,
-                                                                                         X_train, y_train, X_pool,
-                                                                                         y_pool)
-        n_experiments += n_experiments_incr
-        if is_found is True:
-            break
-
-    return n_experiments, i + 1
 
 # Try different ways to change q
 
