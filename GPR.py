@@ -1,5 +1,5 @@
 import numpy as np
-from BO import update_model
+from BO_utils import update_model
 from datasets import Evaluation_data
 from exp_configs_1 import benchmark
 from sklearn.metrics import r2_score
