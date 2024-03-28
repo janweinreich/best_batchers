@@ -20,7 +20,6 @@ from sklearn.preprocessing import MinMaxScaler
 
 NUM_RESTARTS = 20
 RAW_SAMPLES = 512
-sampler = SobolQMCNormalSampler(1024, seed=666)
 
 
 def batch_tanimoto_sim(
@@ -572,9 +571,11 @@ def find_indices(X_candidate_BO, candidates):
 
 # %%
 
-def bo_inner(model, sampler, bounds_norm, q,
+def bo_inner(model, bounds_norm, q,
              X_train, y_train, X_pool, y_pool,
              yield_thr=99.0):
+
+    sampler = SobolQMCNormalSampler(1024, seed=666)
 
     # Set up aqf
     qNEI = qNoisyExpectedImprovement(model, torch.tensor(X_train), sampler)
@@ -659,7 +660,7 @@ def bo_above(q, seed, max_iterations=100):
   n_iter = 0
 
   for i in range(max_iterations):
-    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, sampler, bounds_norm, q, X_train, y_train, X_pool, y_pool)
+    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
     n_experiments += n_experiments_incr
     n_iter += 1
     if is_found is True:
@@ -679,7 +680,7 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
   for i in range(max_iterations):
     q = q_arr[i] if i<len(q_arr) else q_arr[-1]
     print(f'{i=} {q=} {seed=}')
-    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, sampler, bounds_norm, q, X_train, y_train, X_pool, y_pool)
+    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
     n_experiments += n_experiments_incr
     if is_found is True:
       break
