@@ -436,6 +436,50 @@ bounds_norm = DATASET.bounds_norm
 
 print("Current state")
 
+
+
+# q_arr = range(2, max_batch_size+1)
+#
+# timings_all = np.zeros((n_seeds, len(q_arr), 2))
+# for seed in range(n_seeds):
+#   timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
+#
+# timings_all_mean = timings_all.mean(axis=0)
+# timings_exps = timings_all_mean
+#
+#
+# rt_arr = np.linspace(0.1,1.0,5) # time of retraining as % of experiment baseline time
+# ot_arr = np.linspace(0.1,1.0,5) # overhead time per experiment as % of experiment baseline time
+
+def compute_cost(rt, ot, n_exp, n_iter):
+  total_cost = 0.0
+  total_cost += n_iter  # Baseline experiment cost (per iteration)
+  total_cost += rt * n_iter # Retraining cost (per iteration)
+  total_cost += (n_exp - n_iter) * ot # Sum of the overheads
+  return total_cost
+
+# for n_exp, n_iter in timings_exps :
+#   x, y = np.meshgrid(rt_arr, ot_arr)
+#   tt_arr = compute_cost(x, y, n_exp, n_iter)
+#   plt.xlabel("Retraining cost %")
+#   plt.ylabel("Overhead cost %")
+#   plt.pcolormesh(rt_arr, ot_arr, tt_arr)
+#   plt.title('Total time as a function of %overhead and %training')
+#   plt.colorbar()
+#   plt.show()
+#
+#   z = np.zeros((len(q_arr), 25))
+#   x, y = np.meshgrid(rt_arr, ot_arr)
+#   for i, (n_exp, n_iter) in enumerate(timings_exps):
+#       p = q_arr
+#       z[i, :] = compute_cost(x, y, n_exp, n_iter).flatten()
+#   plt.plot(p, z)
+#   plt.title('Total time as a function of q')
+#   plt.legend()
+#   plt.show()
+
+
+
 # Code from Notebook
 
 NUM_RESTARTS = 20
@@ -445,55 +489,21 @@ RAW_SAMPLES = 512
 sampler = SobolQMCNormalSampler(1024)
 
 # Returns number of iterations and number of experiments
-bo_above(q=3, seed=666, max_iterations=5)
+#bo_above(q=3, seed=666, max_iterations=5)
 
 # Get baseline results with fixed q
 max_batch_size = 10  # 10
 n_seeds = 10         # 10
 max_iterations = 100  # 100
 
-q_arr = range(2, max_batch_size+1)
+def q_exp_decay(mean_value_acq_function,max_batch_size, min_batch_size=3):
+    q_arr = np.exp(-mean_value_acq_function)*max_batch_size
+    if int(q_arr) < min_batch_size:
+        q_arr = min_batch_size
+    return int(q_arr)
 
-timings_all = np.zeros((n_seeds, len(q_arr), 2))
-for seed in range(n_seeds):
-  timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
-
-timings_all_mean = timings_all.mean(axis=0)
-timings_exps = timings_all_mean
-
-
-rt_arr = np.linspace(0.1,1.0,5) # time of retraining as % of experiment baseline time
-ot_arr = np.linspace(0.1,1.0,5) # overhead time per experiment as % of experiment baseline time
-
-def compute_cost(rt, ot, n_exp, n_iter):
-  total_cost = 0.0
-  total_cost += n_iter  # Baseline experiment cost (per iteration)
-  total_cost += rt * n_iter # Retraining cost (per iteration)
-  total_cost += (n_exp - n_iter) * ot # Sum of the overheads
-  return total_cost
-
-for n_exp, n_iter in timings_exps :
-  x, y = np.meshgrid(rt_arr, ot_arr)
-  tt_arr = compute_cost(x, y, n_exp, n_iter)
-  plt.xlabel("Retraining cost %")
-  plt.ylabel("Overhead cost %")
-  plt.pcolormesh(rt_arr, ot_arr, tt_arr)
-  plt.title('Total time as a function of %overhead and %training')
-  plt.colorbar()
-  plt.show()
-
-  z = np.zeros((len(q_arr), 25))
-  x, y = np.meshgrid(rt_arr, ot_arr)
-  for i, (n_exp, n_iter) in enumerate(timings_exps):
-      p = q_arr
-      z[i, :] = compute_cost(x, y, n_exp, n_iter).flatten()
-  plt.plot(p, z)
-  plt.title('Total time as a function of q')
-  plt.legend()
-  plt.show()
 
 # BO loop but with q depending on iteration number
-
 def bo_above_flex_batch(q_arr, seed, max_iterations=100):
     model, X_train, y_train, X_pool, y_pool = init_stuff(seed)
 
@@ -501,12 +511,20 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
     n_experiments = 0
 
     for i in range(max_iterations):
-        q = q_arr[i] if i < len(q_arr) else q_arr[-1]
-        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, sampler, bounds_norm, q,
+
+        #best_observed_yield = max(y_train)[0]
+        #q = int(99.9 - best_observed_yield)/max_batch_size
+        #q = q_arr[i] if i < len(q_arr) else q_arr[-1]
+        if i == 0:
+            q = 10
+        else:
+            q = q_exp_decay(aqf_values.mean(), max_batch_size)
+        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, aqf_values = bo_inner(model, sampler, bounds_norm, q,
                                                                                          X_train, y_train, X_pool,
                                                                                          y_pool)
         n_experiments += n_experiments_incr
         if is_found is True:
+            print(f"Found in iteration {i} with {n_experiments} experimnets! :)")
             break
 
     return n_experiments, i + 1
@@ -521,7 +539,12 @@ n_seeds = 10         # 10
 max_iterations = 100  # 100
 
 timings_all = np.zeros((n_seeds, 2))
+
 for seed in range(n_seeds):
   timings_all[seed] = bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
+  df = pd.DataFrame(timings_all, columns=['timing', 'iterations'])
+  print(df)
+  df.to_csv('exp_decay_5torest.csv', index=None)
 
 print(timings_all)
+print('ENDE')
