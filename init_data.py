@@ -222,7 +222,7 @@ class Evaluation_data:
         torch.manual_seed(SEED)
         np.random.seed(SEED)
 
-        indices_init = self.where_worst_ligand[:200]
+        indices_init = np.random.choice(self.where_worst_ligand[:200], size=48, replace=False)
         exp_init = self.experiments[indices_init]
         indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
 
