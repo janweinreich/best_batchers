@@ -276,9 +276,24 @@ def find_indices(X_candidate_BO, candidates):
     return indices
 
 # The main BO loop for fixed q and helper functions
-def bo_inner(model, sampler, bounds_norm, q,
-             X_train, y_train, X_pool, y_pool,
-             yield_thr=99.0):
+def bo_inner(model, sampler, bounds_norm, q, X_train, y_train, X_pool, y_pool, yield_thr=99.0):
+    """
+    The inner loop of the BO algorithm. This function selects the next batch of
+    candidates based on the qNEI acquisition function (qNoisyExpectedImprovement) and updates the model
+    Args:
+        model:
+        sampler:
+        bounds_norm:
+        q:
+        X_train:
+        y_train:
+        X_pool:
+        y_pool:
+        yield_thr: 99 (default)
+
+    Returns:
+
+    """
     # Set up aqf
     qNEI = qNoisyExpectedImprovement(model, torch.tensor(X_train), sampler)
     X_candidate, _ = optimize_acqf_discrete(
@@ -320,7 +335,21 @@ def bo_inner(model, sampler, bounds_norm, q,
     return success, n_experiments, model, X_train, y_train, X_pool, y_pool
 
 
-def init_stuff(seed):
+def init_stuff(seed=777):
+    """
+    Initialisation of dataset, model and splits.
+
+    Args:
+        seed: random seed (default 777)
+
+    Returns:
+        model: model object
+        X_train: training data, data which is already used by the model
+        y_train: training labels
+        X_pool: pool data, data which could be sampled in the future
+        y_pool: pool labels
+
+    """
     # Initialize data from dataset
     DATASET = Evaluation_data()
     bounds_norm = DATASET.bounds_norm
@@ -350,6 +379,17 @@ def init_stuff(seed):
     return model, X_train, y_train, X_pool, y_pool
 
 def bo_above(q, seed, max_iterations=100):
+    """
+    Runs the BO loop with a fixed batch size q.
+    Number of experiment is counter for the amount of experiments conducted.
+    ? Number of iterations ?
+    q: Batch size
+    seed: random seed
+    max_iterations:
+
+    Returns: number of experiments, number of iterations
+
+    """
     model, X_train, y_train, X_pool, y_pool = init_stuff(seed)
 
     # Count experiments
@@ -390,9 +430,11 @@ print("Current state")
 
 NUM_RESTARTS = 20
 RAW_SAMPLES = 512
+
+# Selection of next datapoints based on aquisition function
 sampler = SobolQMCNormalSampler(1024)
 
-
+# Returns number of iterations and number of experiments
 bo_above(q=3, seed=666, max_iterations=5)
 
 # Get baseline results with fixed q
