@@ -309,14 +309,15 @@ def bo_inner(model, sampler, bounds_norm, q,
     success = any(y_candidate > yield_thr)
 
     if success:
-        print("We found some good candidate! :)")
+        #print("We found some good candidate! :)")
+        _ = 1000
     else:
-        print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
+        #print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
         X_train = np.vstack([X_train, X_candidate])
         y_train = np.concatenate([y_train, y_candidate])
         model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
 
-    print(y_candidate)
+    #print(y_candidate)
     return success, n_experiments, model, X_train, y_train, X_pool, y_pool, aqf_values
 
 
@@ -442,8 +443,9 @@ max_iterations = 100  # 100
 
 
 # BO loop but with q depending on iteration number
-def q_exp_decay(mean_value_acq_function,max_batch_size, min_batch_size=3):
+def q_exp_decay(mean_value_acq_function,max_batch_size, min_batch_size=3, old_q=None, down_only=False):
     q_arr = np.exp(-mean_value_acq_function)*max_batch_size
+    if int(q_arr) > old_q and down_only: q_arr = old_q
     if int(q_arr) < min_batch_size:
         q_arr = min_batch_size
     return int(q_arr)
@@ -452,7 +454,8 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
 
     # Count experiments
     n_experiments = 0
-
+    
+    q_in = []
     for i in range(max_iterations):
 
         #best_observed_yield = max(y_train)[0]
@@ -461,16 +464,18 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
         if i == 0:
             q = 10
         else:
-            q = q_exp_decay(aqf_values.mean(), max_batch_size)
+            q = q_exp_decay(aqf_values.mean(), max_batch_size, old_q=q)
         is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, aqf_values = bo_inner(model, sampler, bounds_norm, q,
                                                                                          X_train, y_train, X_pool,
                                                                                          y_pool)
+        q_in.append((q, aqf_values.mean().numpy()))
         n_experiments += n_experiments_incr
         if is_found is True:
             print(f"Found in iteration {i} with {n_experiments} experimnets! :)")
             break
-
+    q_arr.append(q_in)
     return n_experiments, i + 1
+
 
 # Try different ways to change q
 
@@ -483,11 +488,14 @@ max_iterations = 100  # 100
 
 timings_all = np.zeros((n_seeds, 2))
 
+q_arr = []
 for seed in range(n_seeds):
   timings_all[seed] = bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
   df = pd.DataFrame(timings_all, columns=['timing', 'iterations'])
   print(df)
+  if seed == 1: break
   df.to_csv('exp_decay_5torest.csv', index=None)
 
+print(*q_arr, sep='\n')
 print(timings_all)
 print('ENDE')
