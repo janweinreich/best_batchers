@@ -616,7 +616,7 @@ def bo_inner(model, bounds_norm, q,
       model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
 
     #print(y_candidate)
-    return success, n_experiments, model, X_train, y_train, X_pool, y_pool
+    return success, n_experiments, model, X_train, y_train, X_pool, y_pool, float(max(y_candidate))
 
 
 def init_stuff(seed):
@@ -661,7 +661,7 @@ def bo_above(q, seed, max_iterations=100):
 
   for i in range(max_iterations):
     print(f'{i=} {q=} {seed=}')
-    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
+    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, _ = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
     n_experiments += n_experiments_incr
     n_iter += 1
     if is_found is True:
@@ -681,7 +681,37 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
   for i in range(max_iterations):
     q = q_arr[i] if i<len(q_arr) else q_arr[-1]
     print(f'{i=} {q=} {seed=}')
-    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
+    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, _ = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
+    n_experiments += n_experiments_incr
+    if is_found is True:
+      break
+
+  return n_experiments, i+1
+
+
+
+def bo_above_adaptive_batch(q0, seed, max_iterations=100):
+
+  model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
+
+  # Count experiments
+  n_experiments = 0
+  dy = None
+  dy_old = 0.0
+  y_best_candidate_old = 0.0
+
+  for i in range(max_iterations):
+    if i==0:
+        q = q0
+    else:
+        if (0 < dy < dy_old) and (q > 2):
+            q -= 1
+        dy_old = dy
+        y_best_candidate_old = y_best_candidate
+
+    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, y_best_candidate = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
+    dy = y_best_candidate - y_best_candidate_old
+    print(f'{i=} {q=} {seed=} {y_best_candidate=} {dy=} {dy_old=}')
     n_experiments += n_experiments_incr
     if is_found is True:
       break

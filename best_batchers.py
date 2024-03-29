@@ -5,7 +5,7 @@ np.random.seed(777)
 import torch
 from botorch.exceptions import InputDataWarning
 import warnings
-from functions import bo_above, bo_above_flex_batch
+from functions import bo_above, bo_above_flex_batch, bo_above_adaptive_batch
 from plots import plot_results
 
 
@@ -48,7 +48,7 @@ if False:
 
 
 # PLAY WITH DYNAMIC Q
-if True:
+if False:
     # q_arr = [5, 5, 5, 7]
     # [33.2  5.6]
     q_arr = [3, 3, 3, 5, 7]
@@ -67,5 +67,15 @@ if True:
     np.save("timings_all_compare.npy", timings_all)
     print(timings_all)
     timings_all_mean = timings_all.mean(axis=0)
-    timings_exps = timings_all_mean
-    print("2nd output", timings_exps)
+    print(timings_all_mean)
+
+
+# ADAPTIVE Q
+if True:
+    q_arr = range(3, max_batch_size+1)
+    for q0 in q_arr:
+        timings_all = np.zeros((n_seeds, 2))
+        for seed in range(n_seeds):
+            timings_all[seed] = bo_above_adaptive_batch(q0=q0, seed=seed, max_iterations=max_iterations)
+        timings_all_mean = timings_all.mean(axis=0)
+        print(f'{q0=}', timings_all_mean)
