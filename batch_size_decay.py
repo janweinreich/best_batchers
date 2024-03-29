@@ -275,51 +275,6 @@ def find_indices(X_candidate_BO, candidates):
     indices = np.array(indices)
     return indices
 
-# The main BO loop for fixed q and helper functions
-def bo_inner(model, sampler, bounds_norm, q,
-             X_train, y_train, X_pool, y_pool,
-             yield_thr=99.9):
-    # Set up aqf
-    qNEI = qNoisyExpectedImprovement(model, torch.tensor(X_train), sampler)
-    X_candidate, aqf_values = optimize_acqf_discrete(
-        acq_function=qNEI,
-        bounds=bounds_norm,
-        q=q,
-        choices=torch.tensor(X_pool),
-        unique=True,
-        num_restarts=NUM_RESTARTS,
-        raw_samples=RAW_SAMPLES,
-        sequential=False,
-    )
-
-    # See how they actually look
-    X_candidate = np.array(X_candidate)
-    indices = find_indices(X_pool, X_candidate)
-    indices_keep = np.setdiff1d(np.arange(X_pool.shape[0]), indices)
-    y_candidate = y_pool[indices]
-
-    # We also count the number of experiments conducted
-    n_experiments = y_candidate.shape[0]
-
-    # Remove from pool
-    X_pool = X_pool[indices_keep]
-    y_pool = y_pool[indices_keep]
-
-    # If we got good performance, we are done
-    success = any(y_candidate > yield_thr)
-
-    if success:
-        #print("We found some good candidate! :)")
-        _ = 1000
-    else:
-        #print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
-        X_train = np.vstack([X_train, X_candidate])
-        y_train = np.concatenate([y_train, y_candidate])
-        model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
-
-    #print(y_candidate)
-    return success, n_experiments, model, X_train, y_train, X_pool, y_pool, aqf_values
-
 
 def init_stuff(seed):
     # Initialize data from dataset
@@ -449,8 +404,58 @@ def q_exp_decay(mean_value_acq_function,max_batch_size, min_batch_size=3, old_q=
     if int(q_arr) < min_batch_size:
         q_arr = min_batch_size
     return int(q_arr)
+
+
+# Restore proper function from ./functions.py
+from functions import *
+
+# The main BO loop for fixed q and helper functions
+def bo_inner(model, sampler, bounds_norm, q,
+             X_train, y_train, X_pool, y_pool,
+             yield_thr=99.9):
+    # Set up aqf
+    qNEI = qNoisyExpectedImprovement(model, torch.tensor(X_train), sampler)
+    X_candidate, aqf_values = optimize_acqf_discrete(
+        acq_function=qNEI,
+        bounds=bounds_norm,
+        q=q,
+        choices=torch.tensor(X_pool),
+        unique=True,
+        num_restarts=NUM_RESTARTS,
+        raw_samples=RAW_SAMPLES,
+        sequential=False,
+    )
+
+    # See how they actually look
+    X_candidate = np.array(X_candidate)
+    indices = find_indices(X_pool, X_candidate)
+    indices_keep = np.setdiff1d(np.arange(X_pool.shape[0]), indices)
+    y_candidate = y_pool[indices]
+
+    # We also count the number of experiments conducted
+    n_experiments = y_candidate.shape[0]
+
+    # Remove from pool
+    X_pool = X_pool[indices_keep]
+    y_pool = y_pool[indices_keep]
+
+    # If we got good performance, we are done
+    success = any(y_candidate > yield_thr)
+
+    if success:
+        #print("We found some good candidate! :)")
+        _ = 1000
+    else:
+        #print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
+        X_train = np.vstack([X_train, X_candidate])
+        y_train = np.concatenate([y_train, y_candidate])
+        model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
+
+    #print(y_candidate)
+    return success, n_experiments, model, X_train, y_train, X_pool, y_pool, aqf_values
+
 def bo_above_flex_batch(q_arr, seed, max_iterations=100):
-    model, X_train, y_train, X_pool, y_pool = init_stuff(seed)
+    model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
 
     # Count experiments
     n_experiments = 0
@@ -476,7 +481,6 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
     q_arr.append(q_in)
     return n_experiments, i + 1
 
-
 # Try different ways to change q
 
 # q_arr = np.arange(10,1,-2)
@@ -493,7 +497,7 @@ for seed in range(n_seeds):
   timings_all[seed] = bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
   df = pd.DataFrame(timings_all, columns=['timing', 'iterations'])
   print(df)
-  if seed == 1: break
+  if seed == 4: break
   df.to_csv('exp_decay_5torest.csv', index=None)
 
 print(*q_arr, sep='\n')
