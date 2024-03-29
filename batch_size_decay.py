@@ -15,12 +15,10 @@ from botorch.optim import optimize_acqf_discrete
 from botorch.sampling import SobolQMCNormalSampler
 
 from BO_utils import update_model
+import pandas as pd
 
-
-
-SEED=777
-random.seed(SEED)
-np.random.seed(SEED)
+random.seed(777)
+np.random.seed(777)
 
 def inchi_to_smiles(inchi_list):
     """
@@ -97,7 +95,7 @@ class directaryl:
         self.radius = 2
         self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
         dataset_url = "https://raw.githubusercontent.com/doyle-lab-ucla/edboplus/main/examples/publication/BMS_yield_cost/data/PCI_PMI_cost_full.csv"
-        self.data = pd.read_csv(dataset_url, verbose=True)
+        self.data = pd.read_csv(dataset_url)
         self.data = self.data.sample(frac=1).reset_index(drop=True)
         # create a copy of the data
         data_copy = self.data.copy()
@@ -224,7 +222,6 @@ class Evaluation_data:
         torch.manual_seed(SEED)
         np.random.seed(SEED)
 
-        # Reduce the number of initial experiments to 48
         indices_init = np.random.choice(self.where_worst_ligand[:200], size=48, replace=False)
         exp_init = self.experiments[indices_init]
         indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
@@ -279,27 +276,12 @@ def find_indices(X_candidate_BO, candidates):
     return indices
 
 # The main BO loop for fixed q and helper functions
-def bo_inner(model, sampler, bounds_norm, q, X_train, y_train, X_pool, y_pool, yield_thr=99.0):
-    """
-    The inner loop of the BO algorithm. This function selects the next batch of
-    candidates based on the qNEI acquisition function (qNoisyExpectedImprovement) and updates the model
-    Args:
-        model: model object
-        sampler: SobolQMCNormalSampler
-        bounds_norm: bounds for the ac
-        q: batch size
-        X_train: training data
-        y_train: training labels
-        X_pool: pool data
-        y_pool: pool labels
-        yield_thr: 99 (default)  # seems high, since the error of measurement will be much higher than 1 %
-
-    Returns:
-
-    """
+def bo_inner(model, sampler, bounds_norm, q,
+             X_train, y_train, X_pool, y_pool,
+             yield_thr=99.9):
     # Set up aqf
     qNEI = qNoisyExpectedImprovement(model, torch.tensor(X_train), sampler)
-    X_candidate, _ = optimize_acqf_discrete(
+    X_candidate, aqf_values = optimize_acqf_discrete(
         acq_function=qNEI,
         bounds=bounds_norm,
         q=q,
@@ -335,34 +317,14 @@ def bo_inner(model, sampler, bounds_norm, q, X_train, y_train, X_pool, y_pool, y
         model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
 
     print(y_candidate)
-    return success, n_experiments, model, X_train, y_train, X_pool, y_pool
+    return success, n_experiments, model, X_train, y_train, X_pool, y_pool, aqf_values
 
 
-def init_stuff(seed=777):
-    """
-    Initialisation of dataset, model and splits.
-
-    Args:
-        seed: random seed (default 777)
-
-    Returns:
-        model: model object
-        X_train: training data, data which is already used by the model
-        y_train: training labels
-        X_pool: pool data, data which could be sampled in the future
-        y_pool: pool labels
-
-    """
+def init_stuff(seed):
     # Initialize data from dataset
     DATASET = Evaluation_data()
     bounds_norm = DATASET.bounds_norm
 
-    # Our common starting point for data
-    # X_init contains 144 datapoints as tensor, feature length 1538
-    # y_init contains 144 labels as tensor
-    # Pool contains datapoints which can be requested / sampled by accquisition function and sampler
-    # X_pool_fixed contains 1584 datapoints as tensor, feature length 1538
-    # y_pool_fixed contains 1584 labels as tensor
     (
         X_init,
         y_init,
@@ -373,7 +335,6 @@ def init_stuff(seed=777):
         _,
         _,
     ) = DATASET.get_init_holdout_data(seed)
-
 
     # Construct initial shitty model
     model, _ = update_model(
@@ -389,29 +350,16 @@ def init_stuff(seed=777):
     return model, X_train, y_train, X_pool, y_pool
 
 def bo_above(q, seed, max_iterations=100):
-    """
-    Runs the BO loop with a fixed batch size q.
-    Number of experiment is counter for the amount of experiments conducted.
-    ? Number of iterations ?
-    q: Batch size
-    seed: random seed
-    max_iterations:
-
-    Returns: number of experiments, number of iterations
-
-    """
     model, X_train, y_train, X_pool, y_pool = init_stuff(seed)
 
-    # Count total experiments needed
+    # Count experiments
     n_experiments = 0
 
-    # Count iterations of the BO cycle
-    # Exapmle: With a batch size of 10 and n_iter of 5 we would have 50 additional experiments
+    # Count iterations
     n_iter = 0
-    # Is not equal to max_iterations if we find a good candidate before
 
     for i in range(max_iterations):
-        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, sampler, bounds_norm, q,
+        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, aqf_values = bo_inner(model, sampler, bounds_norm, q,
                                                                                          X_train, y_train, X_pool,
                                                                                          y_pool)
         n_experiments += n_experiments_incr
@@ -421,6 +369,37 @@ def bo_above(q, seed, max_iterations=100):
 
     return n_experiments, n_iter
 
+
+DATASET = Evaluation_data()
+bounds_norm = DATASET.bounds_norm
+
+(
+    X_init,
+    y_init,
+    X_pool_fixed,
+    y_pool_fixed,
+    LIGANDS_INIT,
+    LIGANDS_HOLDOUT,
+    exp_init,
+    exp_holdout,
+) = DATASET.get_init_holdout_data(777)
+
+
+
+
+# q_arr = range(2, max_batch_size+1)
+#
+# timings_all = np.zeros((n_seeds, len(q_arr), 2))
+# for seed in range(n_seeds):
+#   timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
+#
+# timings_all_mean = timings_all.mean(axis=0)
+# timings_exps = timings_all_mean
+#
+#
+# rt_arr = np.linspace(0.1,1.0,5) # time of retraining as % of experiment baseline time
+# ot_arr = np.linspace(0.1,1.0,5) # overhead time per experiment as % of experiment baseline time
+
 def compute_cost(rt, ot, n_exp, n_iter):
   total_cost = 0.0
   total_cost += n_iter  # Baseline experiment cost (per iteration)
@@ -428,8 +407,46 @@ def compute_cost(rt, ot, n_exp, n_iter):
   total_cost += (n_exp - n_iter) * ot # Sum of the overheads
   return total_cost
 
-# BO loop but with q depending on iteration number
+# for n_exp, n_iter in timings_exps :
+#   x, y = np.meshgrid(rt_arr, ot_arr)
+#   tt_arr = compute_cost(x, y, n_exp, n_iter)
+#   plt.xlabel("Retraining cost %")
+#   plt.ylabel("Overhead cost %")
+#   plt.pcolormesh(rt_arr, ot_arr, tt_arr)
+#   plt.title('Total time as a function of %overhead and %training')
+#   plt.colorbar()
+#   plt.show()
+#
+#   z = np.zeros((len(q_arr), 25))
+#   x, y = np.meshgrid(rt_arr, ot_arr)
+#   for i, (n_exp, n_iter) in enumerate(timings_exps):
+#       p = q_arr
+#       z[i, :] = compute_cost(x, y, n_exp, n_iter).flatten()
+#   plt.plot(p, z)
+#   plt.title('Total time as a function of q')
+#   plt.legend()
+#   plt.show()
 
+print("Exponential decay")
+
+# Code from Notebook
+
+NUM_RESTARTS = 20
+RAW_SAMPLES = 512
+sampler = SobolQMCNormalSampler(1024)
+
+# Get baseline results with fixed q
+max_batch_size = 10  # 10
+n_seeds = 10         # 10
+max_iterations = 100  # 100
+
+
+# BO loop but with q depending on iteration number
+def q_exp_decay(mean_value_acq_function,max_batch_size, min_batch_size=3):
+    q_arr = np.exp(-mean_value_acq_function)*max_batch_size
+    if int(q_arr) < min_batch_size:
+        q_arr = min_batch_size
+    return int(q_arr)
 def bo_above_flex_batch(q_arr, seed, max_iterations=100):
     model, X_train, y_train, X_pool, y_pool = init_stuff(seed)
 
@@ -437,96 +454,40 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
     n_experiments = 0
 
     for i in range(max_iterations):
-        q = q_arr[i] if i < len(q_arr) else q_arr[-1]
-        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool = bo_inner(model, sampler, bounds_norm, q,
+
+        #best_observed_yield = max(y_train)[0]
+        #q = int(99.9 - best_observed_yield)/max_batch_size
+        #q = q_arr[i] if i < len(q_arr) else q_arr[-1]
+        if i == 0:
+            q = 10
+        else:
+            q = q_exp_decay(aqf_values.mean(), max_batch_size)
+        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, aqf_values = bo_inner(model, sampler, bounds_norm, q,
                                                                                          X_train, y_train, X_pool,
                                                                                          y_pool)
         n_experiments += n_experiments_incr
         if is_found is True:
+            print(f"Found in iteration {i} with {n_experiments} experimnets! :)")
             break
 
     return n_experiments, i + 1
 
+# Try different ways to change q
 
-def main():
-    DATASET = Evaluation_data()
-    bounds_norm = DATASET.bounds_norm
-    
-    (
-        X_init,
-        y_init,
-        X_pool_fixed,
-        y_pool_fixed,
-        LIGANDS_INIT,
-        LIGANDS_HOLDOUT,
-        exp_init,
-        exp_holdout,
-    ) = DATASET.get_init_holdout_data(777)
-    
-    print("Current state")
-    
-    # Code from Notebook
-    
-    NUM_RESTARTS = 20
-    RAW_SAMPLES = 512
-    
-    # Selection of next datapoints based on aquisition function
-    sampler = SobolQMCNormalSampler(1024)
-    
-    # Returns number of iterations and number of experiments
-    bo_above(q=3, seed=666, max_iterations=5)
-    
-    # Get baseline results with fixed q
-    max_batch_size = 10  # 10
-    n_seeds = 10         # 10
-    max_iterations = 100  # 100
-    
-    q_arr = range(2, max_batch_size+1)
-    
-    timings_all = np.zeros((n_seeds, len(q_arr), 2))
-    for seed in range(n_seeds):
-      timings_all[seed] = [bo_above(q=q, seed=seed, max_iterations=max_iterations) for q in q_arr]
-    
-    timings_all_mean = timings_all.mean(axis=0)
-    timings_exps = timings_all_mean
-    
-    
-    rt_arr = np.linspace(0.1,1.0,5) # time of retraining as % of experiment baseline time
-    ot_arr = np.linspace(0.1,1.0,5) # overhead time per experiment as % of experiment baseline time
-    
-    for n_exp, n_iter in timings_exps :
-      x, y = np.meshgrid(rt_arr, ot_arr)
-      tt_arr = compute_cost(x, y, n_exp, n_iter)
-      plt.xlabel("Retraining cost %")
-      plt.ylabel("Overhead cost %")
-      plt.pcolormesh(rt_arr, ot_arr, tt_arr)
-      plt.title('Total time as a function of %overhead and %training')
-      plt.colorbar()
-      plt.show()
-    
-      z = np.zeros((len(q_arr), 25))
-      x, y = np.meshgrid(rt_arr, ot_arr)
-      for i, (n_exp, n_iter) in enumerate(timings_exps):
-          p = q_arr
-          z[i, :] = compute_cost(x, y, n_exp, n_iter).flatten()
-      plt.plot(p, z)
-      plt.title('Total time as a function of q')
-      plt.legend()
-      plt.show()
-    
-    # Try different ways to change q
-    
-    # q_arr = np.arange(10,1,-2)
-    # q_arr = np.arange(7,1,-1)
-    q_arr = np.arange(5,1,-1)
-    
-    n_seeds = 10         # 10
-    max_iterations = 100  # 100
-    
-    timings_all = np.zeros((n_seeds, 2))
-    for seed in range(n_seeds):
-      timings_all[seed] = bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
-    
-    print(timings_all)
+# q_arr = np.arange(10,1,-2)
+# q_arr = np.arange(7,1,-1)
+q_arr = np.arange(5,1,-1)
 
-if __name__ == '__main__': main()
+n_seeds = 10         # 10
+max_iterations = 100  # 100
+
+timings_all = np.zeros((n_seeds, 2))
+
+for seed in range(n_seeds):
+  timings_all[seed] = bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
+  df = pd.DataFrame(timings_all, columns=['timing', 'iterations'])
+  print(df)
+  df.to_csv('exp_decay_5torest.csv', index=None)
+
+print(timings_all)
+print('ENDE')

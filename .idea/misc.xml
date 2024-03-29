@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="sdkName" value="Remote Python 3.12.2 (sftp://fboser@catalyst.uni-muenster.de:20010/opt/miniconda/envs/bohack/bin/python)" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="Remote Python 3.12.2 (sftp://fboser@catalyst.uni-muenster.de:20010/opt/miniconda/envs/bohack/bin/python)" project-jdk-type="Python SDK" />
+</project>
