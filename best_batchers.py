@@ -40,7 +40,7 @@ def get_baseline(max_batch_size, n_seeds, max_iterations):
 
 
 # GET THE BASELINE RESULTS
-if True:
+if False:
     timings_all_baseline, timings_all_baseline_mean = get_baseline(max_batch_size, n_seeds, max_iterations)
     np.save("timings_all_baseline.npy", timings_all_baseline)
     print(timings_all_baseline_mean)
@@ -48,8 +48,19 @@ if True:
 
 
 # PLAY WITH DYNAMIC Q
-if False:
-    q_arr = [3, 3, 3] # np.arange(10,1,-1)
+if True:
+    # q_arr = [5, 5, 5, 7]
+    # [33.2  5.6]
+    q_arr = [3, 3, 3, 5, 7]
+    # 26.6  5.8
+    #q_arr = [3, 3, 3, 3, 3, 5]
+    # [21.   6.2]
+    #q_arr = np.arange(10,1,-2)
+    # [31.8  6.7]
+    #q_arr = (16 / 2**np.arange(0,4)).astype(int)
+    # [28.4  4.3]
+    #q_arr = (8 / 2**np.arange(0,3)).astype(int)
+    # [30. 11.]
     timings_all = np.zeros((n_seeds, 2))
     for seed in range(n_seeds):
         timings_all[seed] = bo_above_flex_batch(q_arr, seed=seed, max_iterations=max_iterations)
