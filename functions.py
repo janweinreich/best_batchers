@@ -18,8 +18,9 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from sklearn.preprocessing import MinMaxScaler
 
-NUM_RESTARTS = 20
-RAW_SAMPLES = 512
+from botorch_ext import optimize_acqf_discrete_modified
+import pdb
+import matplotlib.pyplot as plt
 
 
 def batch_tanimoto_sim(
@@ -565,12 +566,6 @@ def find_indices(X_candidate_BO, candidates):
     return indices
 
 
-# %% [markdown]
-# The main BO loop for fixed `q` and helper functions
-#
-
-# %%
-
 def bo_inner(model, bounds_norm, q,
              X_train, y_train, X_pool, y_pool,
              yield_thr=99.0):
@@ -617,6 +612,28 @@ def bo_inner(model, bounds_norm, q,
 
     #print(y_candidate)
     return success, n_experiments, model, X_train, y_train, X_pool, y_pool, float(max(y_candidate))
+
+def bo_varying_q(model, qarr, X_train, X_pool):
+
+    n_best = 100
+    for q in qarr:
+        sampler = SobolQMCNormalSampler(1024, seed=666)
+
+        # Set up aqf
+        qNEI = qNoisyExpectedImprovement(model, torch.tensor(X_train), sampler)
+
+        best_candidates, best_acq_values = optimize_acqf_discrete_modified(qNEI, q, torch.tensor(X_pool), n_best, unique=True)
+        best_candidates = best_candidates.view(n_best, q, best_candidates.shape[2])
+        best_acq_values = best_acq_values.view(n_best, q)
+       
+        best_acq_values_norm = best_acq_values.sum(axis=1)
+        plt.hist(best_acq_values_norm, bins=20)
+        plt.savefig(f'q_{q}.png')
+        plt.close()
+    
+    exit()
+
+
 
 
 def init_stuff(seed):
