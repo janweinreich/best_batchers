@@ -616,6 +616,7 @@ def bo_inner(model, bounds_norm, q,
 def bo_varying_q(model, qarr, X_train, X_pool):
 
     n_best = 100
+    measure = []
     for q in qarr:
         sampler = SobolQMCNormalSampler(1024, seed=666)
 
@@ -627,13 +628,37 @@ def bo_varying_q(model, qarr, X_train, X_pool):
         best_acq_values = best_acq_values.view(n_best, q)
        
         best_acq_values_norm = best_acq_values.sum(axis=1)
-        plt.hist(best_acq_values_norm, bins=20)
-        plt.savefig(f'q_{q}.png')
-        plt.close()
+
+
+        coef = compute_outlier_measure_single(best_acq_values_norm)
+        measure.append( coef)
+        print(q,  coef)
     
+    plt.plot(qarr, measure, 'o-')
+    plt.savefig('q_measure.png')
     exit()
 
-
+def compute_outlier_measure_single(dist):
+    """
+    Compute the outlier measure for the maximum value in a distribution.
+    An outlier is considered based on large values only.
+    
+    Parameters:
+    - dist (torch.Tensor): A 1D tensor representing a distribution.
+    
+    Returns:
+    - float: The outlier measure for the distribution.
+    """
+    mean = torch.mean(dist)
+    std = torch.std(dist)
+    
+    # Standardizing the distribution
+    standardized_dist = (dist - mean) / std
+    
+    # Finding the maximum value's standardized score
+    max_value_score = torch.max(standardized_dist)
+    
+    return max_value_score.item()
 
 
 def init_stuff(seed):

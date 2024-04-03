@@ -34,5 +34,5 @@ max_iterations = 100  # 100
 model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(777)
 
 
-qarr = [3, 5, 10, 15]
+qarr = np.arange(2, 15, 1)
 bo_varying_q(model, qarr, X_train, X_pool)
