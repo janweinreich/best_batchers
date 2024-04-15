@@ -21,7 +21,9 @@ from sklearn.preprocessing import MinMaxScaler
 from botorch_ext import optimize_acqf_discrete_modified
 import pdb
 import matplotlib.pyplot as plt
-
+import qstack
+from qstack import compound, spahm
+from tqdm import tqdm
 
 def batch_tanimoto_sim(
     x1: torch.Tensor, x2: torch.Tensor, eps: float = 1e-6
@@ -143,7 +145,7 @@ def update_model(
     X,
     y,
     bounds_norm,
-    kernel_type="Tanimoto",
+    kernel_type,
     fit_y=True,
     FIT_METHOD=True,
     surrogate="GP",
@@ -253,7 +255,7 @@ class Surrogate_Model:
 
     def __init__(
         self,
-        kernel_type="Tanimoto",
+        kernel_type,
         bounds_norm=None,
         fit_y=True,
         FIT_METHOD=True,
@@ -282,9 +284,14 @@ class Surrogate_Model:
         Use BoTorch fit method
         to fit the hyperparameters of the GP and the model weights
         """
-
-        self.kernel_type == "Tanimoto"
-        kernel = TanimotoKernel()
+        if self.kernel_type == "Tanimoto":
+            kernel = TanimotoKernel()
+        elif self.kernel_type == "Matern":
+            kernel = gpytorch.kernels.MaternKernel()
+        elif self.kernel_type == "Linear":
+            kernel = gpytorch.kernels.LinearKernel()
+        else:
+            raise ValueError("Invalid kernel type.")
 
         class InternalGP(SingleTaskGP):
             def __init__(self, train_X, train_Y, kernel):
@@ -302,7 +309,6 @@ class Surrogate_Model:
         self.mll.to(self.X_train_tensor)
 
         fit_gpytorch_model(self.mll, max_retries=50000)
-
 
         self.gp.eval()
         self.mll.eval()
@@ -358,9 +364,13 @@ class FingerprintGenerator:
         return np.array(fingerprints)
 
 
-
-def convert2pytorch(X, y):
-    X = torch.from_numpy(X).float()
+def convert2pytorch(X, y, type_X="float"):
+    if type_X == "float":
+        X = torch.from_numpy(X).float()
+    elif type_X == "int":
+        X = torch.from_numpy(X).int()
+    else:
+        raise ValueError("Invalid type for X.")
     y = torch.from_numpy(y).float().reshape(-1, 1)
     return X, y
 
@@ -541,7 +551,6 @@ class Evaluation_data:
         )
 
 
-
 def find_indices(X_candidate_BO, candidates):
     """
     Identifies and returns the indices of specific candidates within a larger dataset.
@@ -580,8 +589,6 @@ def bo_inner(model, bounds_norm, q,
       q=q,
       choices=torch.tensor(X_pool),
       unique=True,
-      num_restarts=NUM_RESTARTS,
-      raw_samples=RAW_SAMPLES,
       sequential=False,
     )
 
@@ -613,7 +620,7 @@ def bo_inner(model, bounds_norm, q,
     #print(y_candidate)
     return success, n_experiments, model, X_train, y_train, X_pool, y_pool, float(max(y_candidate))
 
-def bo_varying_q(model, qarr, X_train, X_pool):
+def bo_varying_q(model, qarr, X_train, X_pool, iteration):
 
     n_best = 100
     measure = []
@@ -635,8 +642,7 @@ def bo_varying_q(model, qarr, X_train, X_pool):
         print(q,  coef)
     
     plt.plot(qarr, measure, 'o-')
-    plt.savefig('q_measure.png')
-    exit()
+    plt.savefig(f'q_measure_{iteration}.png')
 
 def compute_outlier_measure_single(dist):
     """
@@ -712,7 +718,6 @@ def bo_above(q, seed, max_iterations=100):
   return n_experiments, n_iter
 
 
-
 def bo_above_flex_batch(q_arr, seed, max_iterations=100):
 
   model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
@@ -731,31 +736,192 @@ def bo_above_flex_batch(q_arr, seed, max_iterations=100):
   return n_experiments, i+1
 
 
-
 def bo_above_adaptive_batch(q0, seed, max_iterations=100):
 
-  model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
+    model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
 
-  # Count experiments
-  n_experiments = 0
-  dy = None
-  dy_old = 0.0
-  y_best_candidate_old = 0.0
+    # Count experiments
+    n_experiments = 0
+    dy = None
+    dy_old = 0.0
+    y_best_candidate_old = 0.0
 
-  for i in range(max_iterations):
-    if i==0:
-        q = q0
-    else:
-        if (0 < dy < dy_old) and (q > 2):
-            q -= 1
-        dy_old = dy
-        y_best_candidate_old = y_best_candidate
+    for i in range(max_iterations):
+        if i==0:
+            q = q0
+        else:
+            if (0 < dy < dy_old) and (q > 2):
+                q -= 1
+            dy_old = dy
+            y_best_candidate_old = y_best_candidate
 
-    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, y_best_candidate = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
-    dy = y_best_candidate - y_best_candidate_old
-    print(f'{i=} {q=} {seed=} {y_best_candidate=} {dy=} {dy_old=}')
-    n_experiments += n_experiments_incr
-    if is_found is True:
-      break
+        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, y_best_candidate = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
+        dy = y_best_candidate - y_best_candidate_old
+        print(f'{i=} {q=} {seed=} {y_best_candidate=} {dy=} {dy_old=}')
+        n_experiments += n_experiments_incr
+        if is_found is True:
+            break
 
-  return n_experiments, i+1
+    return n_experiments, i+1
+
+
+# Function to pad the arrays
+def pad_array(arr, target_length):
+    padding = target_length - len(arr)
+    return np.pad(arr, (0, padding), "constant")
+
+
+class formed:
+    def __init__(self, new_parse=False):
+        # https://archive.materialscloud.org/record/2022.162
+        self.max_N = 20000
+        self.datapath = "/home/jan/Downloads/formed"
+        self.SMILES_MODE = True
+        self.new_parse = new_parse
+
+        if self.SMILES_MODE:
+            if self.new_parse:
+                self.data = pd.read_csv(
+                    self.datapath + "/Data_FORMED_scored.csv",
+                    usecols=["name", "Smiles", "gap"],
+                    delimiter=','
+                )
+
+                self.names = self.data["name"].values
+                self.smiles = self.data["Smiles"].values
+                self.y = self.data['gap'].values
+
+                indices = np.arange(len(self.names))
+                np.random.shuffle(indices)
+                self.names = self.names[indices]
+                self.smiles = self.smiles[indices]
+                self.y = self.y[indices]
+
+                self.names = self.names[: self.max_N]
+                self.smiles = self.smiles[: self.max_N]
+                self.y = self.y[: self.max_N]
+
+                self.ECFP_size = 512
+                self.radius = 2
+                self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
+                self.X = self.ftzr.featurize(self.smiles)
+
+
+                self.scaler_X = MinMaxScaler()
+                self.X = self.scaler_X.fit_transform(self.X)
+
+                np.savez_compressed(
+                    self.datapath + "/formed.npz", names=self.names, X=self.X, y=self.y
+                )
+            else:
+                data = np.load("/home/jan/Downloads/formed/formed.npz", allow_pickle=True)
+                self.names = data['names']
+                self.X = data['X']
+                self.y = data['y']
+
+                if not check_entries(self.X):
+                    # print("###############################################")
+                    # print(
+                    #    "Entries of X are not between 0 and 1. Adding MinMaxScaler to the pipeline."
+                    # )
+                    # print("###############################################")
+
+                    self.scaler_X = MinMaxScaler()
+                    self.X = self.scaler_X.fit_transform(self.X)
+        else:
+            if self.new_parse:
+                self.data = pd.read_csv(self.datapath + "/Data_FORMED.csv")
+                duplicates = self.data.duplicated().any()
+                self.names = self.data["name"].values
+                self.y = self.data['gap'].values
+
+                indices = np.arange(len(self.names))
+                np.random.shuffle(indices)
+                self.names = self.names[indices]
+                self.y = self.y[indices]
+
+                # cut down to max_N
+                self.names = self.names[:self.max_N]
+                self.y = self.y[:self.max_N]
+
+                self.X = []
+                keep_inds = []
+                for i, name in tqdm(enumerate(self.names)):
+                    mol = compound.xyz_to_mol(self.datapath + "/XYZ_FORMED/{}.xyz".format(name), "def2svp")
+                    spahm_rep = spahm.compute_spahm.get_spahm_representation(mol, "lb")[0]
+                    self.X.append(spahm_rep)
+                    keep_inds.append(i)
+                max_length = max(len(item) for item in self.X)
+                self.X = np.array([pad_array(item, max_length) for item in self.X])
+                np.savez_compressed(self.datapath + "/formed.npz",names=self.names, X=self.X, y=self.y)
+
+            else:
+                data = np.load("/home/jan/Downloads/formed/formed.npz", allow_pickle=True)
+                self.names = data['names']
+                self.X = data['X']
+                self.y = data['y']
+                if not check_entries(self.X):
+                    self.scaler_X = MinMaxScaler()
+                    self.X = self.scaler_X.fit_transform(self.X)
+
+    def get_init_holdout_data(self, SEED):
+        random.seed(SEED)
+        torch.manual_seed(SEED)
+        np.random.seed(SEED)
+
+        indices_init = np.random.choice(np.arange(len(self.X)), size=8000, replace=False)
+        indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
+
+        np.random.shuffle(indices_init)
+        np.random.shuffle(indices_holdout)
+
+        X_init, y_init = self.X[indices_init], self.y[indices_init]
+        X_holdout, y_holdout = self.X[indices_holdout], self.y[indices_holdout]
+
+        if max(y_init) > max(y_holdout):
+            ind_max = np.argmax(y_init)
+            X_holdout = np.vstack([X_holdout, X_init[ind_max]])
+            y_holdout = np.append(y_holdout, y_init[ind_max])
+            X_init    = np.delete(X_init, ind_max, axis=0)
+            y_init    = np.delete(y_init, ind_max, axis=0)
+
+        if self.SMILES_MODE:
+            X_init, y_init = convert2pytorch(X_init, y_init, type_X="int")
+            X_holdout, y_holdout = convert2pytorch(X_holdout, y_holdout, type_X="int")
+
+        else:
+            X_init, y_init = convert2pytorch(X_init, y_init, type_X="float")
+            X_holdout, y_holdout = convert2pytorch(X_holdout, y_holdout, type_X="float")
+        return (
+            X_init,
+            y_init,
+            X_holdout,
+            y_holdout)
+
+
+if __name__ == '__main__':
+    FORMED_DATASET  = formed(new_parse=False)
+    X_init, y_init, X_holdout, y_holdout = FORMED_DATASET.get_init_holdout_data(666)
+
+    model, _ = update_model(
+        X_init,
+        y_init,
+        bounds_norm=None,
+        kernel_type="Linear",
+        fit_y=False,
+        FIT_METHOD=True,
+        surrogate="GP",
+    )
+    y_pred = model(X_holdout).mean.detach().numpy().flatten()
+
+    # compute the pearson correlation with scikit-learn
+    from sklearn.metrics import r2_score
+    r2 = r2_score(y_holdout, y_pred)
+    print(f"R2: {r2}")
+
+    # make a scatter plot
+    plt.scatter(y_holdout, y_pred)
+    plt.xlabel('True')
+    plt.ylabel('Predicted')
+    plt.title('True vs Predicted')
+    plt.show()
