@@ -19,11 +19,15 @@ from rdkit.Chem import AllChem
 from sklearn.preprocessing import MinMaxScaler
 
 from botorch_ext import optimize_acqf_discrete_modified
-import pdb
 import matplotlib.pyplot as plt
 import qstack
 from qstack import compound, spahm
 from tqdm import tqdm
+import pdb
+
+random.seed(666)
+torch.manual_seed(666)
+np.random.seed(666)
 
 def batch_tanimoto_sim(
     x1: torch.Tensor, x2: torch.Tensor, eps: float = 1e-6
@@ -298,12 +302,8 @@ class Surrogate_Model:
                 super().__init__(train_X, train_Y)
                 self.mean_module = ConstantMean()
                 self.covar_module = ScaleKernel(kernel)
-
         self.gp = InternalGP(self.X_train_tensor, self.y_train_tensor, kernel)
-
-        self.gp.likelihood.noise_constraint = gpytorch.constraints.GreaterThan(
-                1e-3
-            )
+        self.gp.likelihood.noise_constraint = gpytorch.constraints.GreaterThan(1e-3)
 
         self.mll = ExactMarginalLogLikelihood(self.gp.likelihood, self.gp)
         self.mll.to(self.X_train_tensor)
@@ -774,9 +774,9 @@ def pad_array(arr, target_length):
 class formed:
     def __init__(self, new_parse=False):
         # https://archive.materialscloud.org/record/2022.162
-        self.max_N = 20000
+        self.max_N = 50
         self.datapath = "/home/jan/Downloads/formed"
-        self.SMILES_MODE = True
+        self.SMILES_MODE = False
         self.new_parse = new_parse
 
         if self.SMILES_MODE:
@@ -786,7 +786,10 @@ class formed:
                     usecols=["name", "Smiles", "gap"],
                     delimiter=','
                 )
-
+                dublicates = self.data.duplicated().any()
+                if dublicates:
+                    print("There are dublicates in the dataset.")
+                    exit()
                 self.names = self.data["name"].values
                 self.smiles = self.data["Smiles"].values
                 self.y = self.data['gap'].values
@@ -801,7 +804,7 @@ class formed:
                 self.smiles = self.smiles[: self.max_N]
                 self.y = self.y[: self.max_N]
 
-                self.ECFP_size = 512
+                self.ECFP_size = 64
                 self.radius = 2
                 self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
                 self.X = self.ftzr.featurize(self.smiles)
@@ -832,6 +835,9 @@ class formed:
             if self.new_parse:
                 self.data = pd.read_csv(self.datapath + "/Data_FORMED.csv")
                 duplicates = self.data.duplicated().any()
+                if duplicates:
+                    print("There are duplicates in the dataset.")
+                    exit()
                 self.names = self.data["name"].values
                 self.y = self.data['gap'].values
 
@@ -869,7 +875,7 @@ class formed:
         torch.manual_seed(SEED)
         np.random.seed(SEED)
 
-        indices_init = np.random.choice(np.arange(len(self.X)), size=8000, replace=False)
+        indices_init = np.random.choice(np.arange(len(self.X)), size=10, replace=False)
         indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
 
         np.random.shuffle(indices_init)
@@ -900,20 +906,20 @@ class formed:
 
 
 if __name__ == '__main__':
-    FORMED_DATASET  = formed(new_parse=False)
+
+    FORMED_DATASET  = formed(new_parse=True)
     X_init, y_init, X_holdout, y_holdout = FORMED_DATASET.get_init_holdout_data(666)
 
     model, _ = update_model(
         X_init,
         y_init,
         bounds_norm=None,
-        kernel_type="Linear",
+        kernel_type="Tanimoto",
         fit_y=False,
         FIT_METHOD=True,
         surrogate="GP",
     )
     y_pred = model(X_holdout).mean.detach().numpy().flatten()
-
     # compute the pearson correlation with scikit-learn
     from sklearn.metrics import r2_score
     r2 = r2_score(y_holdout, y_pred)
