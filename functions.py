@@ -772,84 +772,46 @@ def pad_array(arr, target_length):
 
 
 class formed:
-    def __init__(self, new_parse=False):
+    def __init__(self, new_parse=False, SMILES_MODE=True):
         # https://archive.materialscloud.org/record/2022.162
-        self.max_N = 50
+        self.max_N = 30000
         self.datapath = "/home/jan/Downloads/formed"
-        self.SMILES_MODE = False
+        self.SMILES_MODE = SMILES_MODE
         self.new_parse = new_parse
 
-        if self.SMILES_MODE:
-            if self.new_parse:
-                self.data = pd.read_csv(
-                    self.datapath + "/Data_FORMED_scored.csv",
-                    usecols=["name", "Smiles", "gap"],
-                    delimiter=','
-                )
-                dublicates = self.data.duplicated().any()
-                if dublicates:
-                    print("There are dublicates in the dataset.")
-                    exit()
-                self.names = self.data["name"].values
-                self.smiles = self.data["Smiles"].values
-                self.y = self.data['gap'].values
+        if self.new_parse:
+            self.data = pd.read_csv(
+                self.datapath + "/Data_FORMED_scored.csv",
+                usecols=["name", "Smiles", "gap"],
+                delimiter=','
+            )
+            self.names = self.data["name"].values
+            self.smiles = self.data["Smiles"].values
+            self.y = self.data['gap'].values
 
-                indices = np.arange(len(self.names))
-                np.random.shuffle(indices)
-                self.names = self.names[indices]
-                self.smiles = self.smiles[indices]
-                self.y = self.y[indices]
+            indices = np.arange(len(self.names))
+            np.random.shuffle(indices)
+            self.names = self.names[indices]
+            self.smiles = self.smiles[indices]
+            self.y = self.y[indices]
 
-                self.names = self.names[: self.max_N]
-                self.smiles = self.smiles[: self.max_N]
-                self.y = self.y[: self.max_N]
+            self.names = self.names[: self.max_N]
+            self.smiles = self.smiles[: self.max_N]
+            self.y = self.y[: self.max_N]
 
-                self.ECFP_size = 64
+            if self.SMILES_MODE:
+                self.ECFP_size = 512 #1024
                 self.radius = 2
                 self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
                 self.X = self.ftzr.featurize(self.smiles)
-
-
                 self.scaler_X = MinMaxScaler()
                 self.X = self.scaler_X.fit_transform(self.X)
-
+                pdb.set_trace()
+                #unique_rows, indices, counts = np.unique(self.X, axis=0, return_index=True, return_counts=True)
                 np.savez_compressed(
-                    self.datapath + "/formed.npz", names=self.names, X=self.X, y=self.y
+                    self.datapath + "/formed_SMILES.npz", names=self.names, X=self.X, y=self.y
                 )
             else:
-                data = np.load("/home/jan/Downloads/formed/formed.npz", allow_pickle=True)
-                self.names = data['names']
-                self.X = data['X']
-                self.y = data['y']
-
-                if not check_entries(self.X):
-                    # print("###############################################")
-                    # print(
-                    #    "Entries of X are not between 0 and 1. Adding MinMaxScaler to the pipeline."
-                    # )
-                    # print("###############################################")
-
-                    self.scaler_X = MinMaxScaler()
-                    self.X = self.scaler_X.fit_transform(self.X)
-        else:
-            if self.new_parse:
-                self.data = pd.read_csv(self.datapath + "/Data_FORMED.csv")
-                duplicates = self.data.duplicated().any()
-                if duplicates:
-                    print("There are duplicates in the dataset.")
-                    exit()
-                self.names = self.data["name"].values
-                self.y = self.data['gap'].values
-
-                indices = np.arange(len(self.names))
-                np.random.shuffle(indices)
-                self.names = self.names[indices]
-                self.y = self.y[indices]
-
-                # cut down to max_N
-                self.names = self.names[:self.max_N]
-                self.y = self.y[:self.max_N]
-
                 self.X = []
                 keep_inds = []
                 for i, name in tqdm(enumerate(self.names)):
@@ -859,23 +821,27 @@ class formed:
                     keep_inds.append(i)
                 max_length = max(len(item) for item in self.X)
                 self.X = np.array([pad_array(item, max_length) for item in self.X])
-                np.savez_compressed(self.datapath + "/formed.npz",names=self.names, X=self.X, y=self.y)
 
+                self.scaler_X = MinMaxScaler()
+                self.X = self.scaler_X.fit_transform(self.X)
+                np.savez_compressed(self.datapath + "/formed_SPAHM.npz",names=self.names, X=self.X, y=self.y)
+
+        else:
+            if self.SMILES_MODE:
+                data = np.load("/home/jan/Downloads/formed/formed_SMILES.npz", allow_pickle=True)
             else:
-                data = np.load("/home/jan/Downloads/formed/formed.npz", allow_pickle=True)
-                self.names = data['names']
-                self.X = data['X']
-                self.y = data['y']
-                if not check_entries(self.X):
-                    self.scaler_X = MinMaxScaler()
-                    self.X = self.scaler_X.fit_transform(self.X)
+                data = np.load("/home/jan/Downloads/formed/formed_SPAHM.npz", allow_pickle=True)
+
+            self.names = data['names']
+            self.X = data['X']
+            self.y = data['y']
 
     def get_init_holdout_data(self, SEED):
         random.seed(SEED)
         torch.manual_seed(SEED)
         np.random.seed(SEED)
 
-        indices_init = np.random.choice(np.arange(len(self.X)), size=10, replace=False)
+        indices_init = np.random.choice(np.arange(len(self.X)), size=1000, replace=False)
         indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
 
         np.random.shuffle(indices_init)
@@ -907,8 +873,9 @@ class formed:
 
 if __name__ == '__main__':
 
-    FORMED_DATASET  = formed(new_parse=True)
+    FORMED_DATASET  = formed(new_parse=True, SMILES_MODE=True)
     X_init, y_init, X_holdout, y_holdout = FORMED_DATASET.get_init_holdout_data(666)
+
 
     model, _ = update_model(
         X_init,
@@ -926,8 +893,9 @@ if __name__ == '__main__':
     print(f"R2: {r2}")
 
     # make a scatter plot
-    plt.scatter(y_holdout, y_pred)
+    plt.scatter(y_holdout, y_pred, alpha=0.007)
     plt.xlabel('True')
     plt.ylabel('Predicted')
     plt.title('True vs Predicted')
+    plt.savefig('true_vs_predicted_spham.png')
     plt.show()
