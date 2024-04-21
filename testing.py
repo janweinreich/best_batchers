@@ -5,18 +5,8 @@ np.random.seed(777)
 import torch
 from botorch.exceptions import InputDataWarning
 import warnings
-from functions import bo_varying_q
-from plots import plot_results
-from functions import init_stuff
-import gpytorch
-from gpytorch.kernels import Kernel, ScaleKernel
-from gpytorch.mlls import ExactMarginalLogLikelihood
-from gpytorch.means import ConstantMean
-
-from botorch.fit import fit_gpytorch_model
-from botorch.models import SingleTaskGP
+from functions import init_directaryl
 from botorch.acquisition.monte_carlo import qNoisyExpectedImprovement
-from botorch.optim import optimize_acqf_discrete
 from botorch.sampling import SobolQMCNormalSampler
 
 from functions import *
@@ -50,7 +40,8 @@ n_best = 100
 
 average_alphas = []
 for q0 in qarr:
-    model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(777)
+    model, X_train, y_train, X_pool, y_pool, bounds_norm = init_formed(777)
+    #init_directaryl(777)
     for i in range(max_iterations):
 
         sampler = SobolQMCNormalSampler(1024, seed=666)

@@ -479,7 +479,7 @@ class directaryl:
         }
 
 
-class Evaluation_data:
+class Evaluation_data_directaryl:
     def __init__(
         self
     ):
@@ -667,9 +667,9 @@ def compute_outlier_measure_single(dist):
     return max_value_score.item()
 
 
-def init_stuff(seed):
+def init_directaryl(seed):
   # Initialize data from dataset
-  DATASET = Evaluation_data()
+  DATASET = Evaluation_data_directaryl()
   bounds_norm = DATASET.bounds_norm
 
   (
@@ -697,9 +697,39 @@ def init_stuff(seed):
   return model, X_train, y_train, X_pool, y_pool, bounds_norm
 
 
+
+def init_formed(seed):
+    # Initialize data from dataset
+    DATASET = formed(new_parse=False, SMILES_MODE=True)
+    bounds_norm = DATASET.bounds_norm
+    
+    (
+        X_init,
+        y_init,
+        X_pool_fixed,
+        y_pool_fixed,
+        smiles_init,
+        smiles_pool,
+    ) = DATASET.get_init_holdout_data(seed)
+    
+    # Construct initial shitty model
+    model, _ = update_model(
+        X_init, y_init, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True
+    )
+    
+    # Copy things to avoid problems later
+    X_train = np.copy(X_init)
+    y_train = np.copy(y_init)
+    X_pool = np.copy(X_pool_fixed)
+    y_pool = np.copy(y_pool_fixed)
+    
+    return model, X_train, y_train, X_pool, y_pool, bounds_norm
+
+
+
 def bo_above(q, seed, max_iterations=100):
 
-  model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
+  model, X_train, y_train, X_pool, y_pool, bounds_norm = init_directaryl(seed)
 
   # Count experiments
   n_experiments = 0
@@ -772,12 +802,13 @@ def pad_array(arr, target_length):
 
 
 class formed:
-    def __init__(self, new_parse=False, SMILES_MODE=True):
+    def __init__(self, new_parse=True, SMILES_MODE=True):
         # https://archive.materialscloud.org/record/2022.162
-        self.max_N = 30000
+        self.max_N = 2000000
         self.datapath = "/home/jan/Downloads/formed"
         self.SMILES_MODE = SMILES_MODE
         self.new_parse = new_parse
+        self.bounds_norm = None
 
         if self.new_parse:
             self.data = pd.read_csv(
@@ -785,7 +816,8 @@ class formed:
                 usecols=["name", "Canonical_Smiles", "gap"],
                 delimiter=','
             )
-            self.data.dropna(axis=0, inplace=True, ignore_index=True)
+            self.data.dropna(axis=0, inplace=True)  # Drop rows with NA values
+            self.data.reset_index(drop=True, inplace=True)  # Reset the index and drop the old index
             self.data.drop_duplicates(subset='Canonical_Smiles', keep='first', inplace=True, ignore_index=True)
             # @Jan check the two above lines, if you'd like keep the initial indices remove 'ignore_index=True'
 
@@ -810,10 +842,9 @@ class formed:
                 self.X = self.ftzr.featurize(self.smiles)
                 self.scaler_X = MinMaxScaler()
                 self.X = self.scaler_X.fit_transform(self.X)
-                pdb.set_trace()
                 #unique_rows, indices, counts = np.unique(self.X, axis=0, return_index=True, return_counts=True)
                 np.savez_compressed(
-                    self.datapath + "/formed_SMILES.npz", names=self.names, X=self.X, y=self.y
+                    self.datapath + "/formed_SMILES.npz", names=self.names, X=self.X, y=self.y, smiles=self.smiles
                 )
             else:
                 self.X = []
@@ -828,7 +859,8 @@ class formed:
 
                 self.scaler_X = MinMaxScaler()
                 self.X = self.scaler_X.fit_transform(self.X)
-                np.savez_compressed(self.datapath + "/formed_SPAHM.npz",names=self.names, X=self.X, y=self.y)
+                np.savez_compressed(self.datapath + "/formed_SPAHM.npz",names=self.names, X=self.X, y=self.y, smiles=self.smiles
+                )
 
         else:
             if self.SMILES_MODE:
@@ -839,20 +871,21 @@ class formed:
             self.names = data['names']
             self.X = data['X']
             self.y = data['y']
+            self.smiles = data['smiles']
 
     def get_init_holdout_data(self, SEED):
         random.seed(SEED)
         torch.manual_seed(SEED)
         np.random.seed(SEED)
 
-        indices_init = np.random.choice(np.arange(len(self.X)), size=1000, replace=False)
+        indices_init = np.random.choice(np.arange(len(self.X)), size=200, replace=False)
         indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
 
         np.random.shuffle(indices_init)
         np.random.shuffle(indices_holdout)
 
-        X_init, y_init = self.X[indices_init], self.y[indices_init]
-        X_holdout, y_holdout = self.X[indices_holdout], self.y[indices_holdout]
+        X_init, y_init, smiles_init = self.X[indices_init], self.y[indices_init], self.smiles[indices_init]
+        X_holdout, y_holdout, smiles_holdout = self.X[indices_holdout], self.y[indices_holdout], self.smiles[indices_holdout]
 
         if max(y_init) > max(y_holdout):
             ind_max = np.argmax(y_init)
@@ -860,6 +893,8 @@ class formed:
             y_holdout = np.append(y_holdout, y_init[ind_max])
             X_init    = np.delete(X_init, ind_max, axis=0)
             y_init    = np.delete(y_init, ind_max, axis=0)
+            smiles_init = np.delete(smiles_init, ind_max, axis=0)
+            smiles_holdout = np.append(smiles_holdout, smiles_init[ind_max])
 
         if self.SMILES_MODE:
             X_init, y_init = convert2pytorch(X_init, y_init, type_X="int")
@@ -872,14 +907,22 @@ class formed:
             X_init,
             y_init,
             X_holdout,
-            y_holdout)
+            y_holdout,
+            smiles_init,
+            smiles_holdout
+        )
 
 
 if __name__ == '__main__':
-
+    """
+    Example how to load and fit the FORMED dataset
+    """
     FORMED_DATASET  = formed(new_parse=True, SMILES_MODE=True)
-    X_init, y_init, X_holdout, y_holdout = FORMED_DATASET.get_init_holdout_data(666)
+    X_init, y_init, X_holdout, y_holdout, smiles_init, smiles_holdout = FORMED_DATASET.get_init_holdout_data(666)
+    y = y_holdout.flatten().detach().numpy()
 
+    print("Molecule with largest gap:", smiles_holdout[np.argmax(y)], max(y))
+    print("Molecule with smallest gap:", smiles_holdout[np.argmin(y)], min(y))
 
     model, _ = update_model(
         X_init,
@@ -897,7 +940,7 @@ if __name__ == '__main__':
     print(f"R2: {r2}")
 
     # make a scatter plot
-    plt.scatter(y_holdout, y_pred, alpha=0.007)
+    plt.scatter(y_holdout, y_pred, alpha=0.004)
     plt.xlabel('True')
     plt.ylabel('Predicted')
     plt.title('True vs Predicted')
