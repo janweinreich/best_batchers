@@ -32,7 +32,7 @@ np.random.seed(666)
 def batch_tanimoto_sim(
     x1: torch.Tensor, x2: torch.Tensor, eps: float = 1e-6
 ) -> torch.Tensor:
-    """
+    r"""
     Tanimoto similarity between two batched tensors, across last 2 dimensions.
     eps argument ensures numerical stability if all zero tensors are added. Tanimoto similarity is proportional to:
 
@@ -633,14 +633,14 @@ def bo_varying_q(model, qarr, X_train, X_pool, iteration):
         best_candidates, best_acq_values = optimize_acqf_discrete_modified(qNEI, q, torch.tensor(X_pool), n_best, unique=True)
         best_candidates = best_candidates.view(n_best, q, best_candidates.shape[2])
         best_acq_values = best_acq_values.view(n_best, q)
-       
+
         best_acq_values_norm = best_acq_values.sum(axis=1)
 
 
         coef = compute_outlier_measure_single(best_acq_values_norm)
         measure.append( coef)
         print(q,  coef)
-    
+
     plt.plot(qarr, measure, 'o-')
     plt.savefig(f'q_measure_{iteration}.png')
 
@@ -648,22 +648,22 @@ def compute_outlier_measure_single(dist):
     """
     Compute the outlier measure for the maximum value in a distribution.
     An outlier is considered based on large values only.
-    
+
     Parameters:
     - dist (torch.Tensor): A 1D tensor representing a distribution.
-    
+
     Returns:
     - float: The outlier measure for the distribution.
     """
     mean = torch.mean(dist)
     std = torch.std(dist)
-    
+
     # Standardizing the distribution
     standardized_dist = (dist - mean) / std
-    
+
     # Finding the maximum value's standardized score
     max_value_score = torch.max(standardized_dist)
-    
+
     return max_value_score.item()
 
 
@@ -782,11 +782,15 @@ class formed:
         if self.new_parse:
             self.data = pd.read_csv(
                 self.datapath + "/Data_FORMED_scored.csv",
-                usecols=["name", "Smiles", "gap"],
+                usecols=["name", "Canonical_Smiles", "gap"],
                 delimiter=','
             )
+            self.data.dropna(axis=0, inplace=True, ignore_index=True)
+            self.data.drop_duplicates(subset='Canonical_Smiles', keep='first', inplace=True, ignore_index=True)
+            # @Jan check the two above lines, if you'd like keep the initial indices remove 'ignore_index=True'
+
             self.names = self.data["name"].values
-            self.smiles = self.data["Smiles"].values
+            self.smiles = self.data["Canonical_Smiles"].values
             self.y = self.data['gap'].values
 
             indices = np.arange(len(self.names))
