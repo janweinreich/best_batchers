@@ -27,21 +27,22 @@ else:
 dtype = torch.float
 
 
-max_batch_size = 10   # 10
+max_batch_size = 5   # 10
 n_seeds = 10          # 10
-max_iterations = 40  # 100
+max_iterations = 20  # 100
 
 
-yield_thr=99.5
+yield_thr= 16.0  #99.5
+n_best = 10000
+qarr = np.arange(2, max_batch_size+1, 1)
 
-qarr = [2] #np.arange(2, 15, 1)
 
-n_best = 100
 
 average_alphas = []
 for q0 in qarr:
     model, X_train, y_train, X_pool, y_pool, bounds_norm = init_formed(777)
     #init_directaryl(777)
+    inter_med_alphas = []
     for i in range(max_iterations):
 
         sampler = SobolQMCNormalSampler(1024, seed=666)
@@ -58,16 +59,16 @@ for q0 in qarr:
         X_candidate = X_candidate.view(n_best, q0, X_candidate.shape[2])
         best_acq_values = best_acq_values.view(n_best, q0)
         #pdb.set_trace()
-        plt.hist(best_acq_values.mean(axis=1).numpy())
-        plt.savefig(f"hist_{i}.png")
-        plt.close()
+        #plt.hist(best_acq_values.mean(axis=1).numpy())
+        #plt.savefig(f"hist_{i}.png")
+        #plt.close()
 
         best_acq_values_norm = (
             best_acq_values.mean(axis=1).mean().item()
             / best_acq_values.std(axis=1).mean().item()
         )
         print({"q": q0, "i": i, "best_acq_values_norm": best_acq_values_norm})
-        average_alphas.append(best_acq_values_norm)
+        
 
         # See how they actually look
         X_candidate = np.array(X_candidate[0])
@@ -94,7 +95,11 @@ for q0 in qarr:
             y_train = np.concatenate([y_train, y_candidate])
             model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
 
+        inter_med_alphas.append(best_acq_values_norm)
 
+    average_alphas.append(np.mean(inter_med_alphas))
+
+pdb.set_trace()
 average_alphas = np.array(average_alphas)
 fig, ax = plt.subplots()
 # plot the average alphas over iterations
