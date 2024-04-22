@@ -392,7 +392,7 @@ class directaryl:
     def __init__(self):
         # direct arylation reaction
         self.ECFP_size = 512
-        self.radius = 2
+        self.radius = 4
         self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
         dataset_url = "https://raw.githubusercontent.com/doyle-lab-ucla/edboplus/main/examples/publication/BMS_yield_cost/data/PCI_PMI_cost_full.csv"
         self.data = pd.read_csv(dataset_url)
@@ -837,7 +837,7 @@ class formed:
 
             if self.SMILES_MODE:
                 self.ECFP_size = 512 #1024
-                self.radius = 2
+                self.radius = 4
                 self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
                 self.X = self.ftzr.featurize(self.smiles)
                 self.scaler_X = MinMaxScaler()
