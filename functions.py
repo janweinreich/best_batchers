@@ -1,319 +1,24 @@
 import random
-import pandas as pd
 import numpy as np
 import torch
 
-import gpytorch
-from gpytorch.kernels import Kernel, ScaleKernel
-from gpytorch.mlls import ExactMarginalLogLikelihood
-from gpytorch.means import ConstantMean
-
-from botorch.fit import fit_gpytorch_model
-from botorch.models import SingleTaskGP
-from botorch.acquisition.monte_carlo import qNoisyExpectedImprovement
-from botorch.optim import optimize_acqf_discrete
-from botorch.sampling import SobolQMCNormalSampler
-
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from sklearn.preprocessing import MinMaxScaler
 
 from botorch_ext import optimize_acqf_discrete_modified
 import matplotlib.pyplot as plt
-import qstack
-from qstack import compound, spahm
-from tqdm import tqdm
-import pdb
+
+
+from datasets import init_directaryl, init_formed
+from BO_utils import update_model
+from botorch.acquisition.monte_carlo import qNoisyExpectedImprovement
+from botorch.sampling import SobolQMCNormalSampler
+from botorch.optim import optimize_acqf_discrete
 
 random.seed(666)
 torch.manual_seed(666)
 np.random.seed(666)
 
-def batch_tanimoto_sim(
-    x1: torch.Tensor, x2: torch.Tensor, eps: float = 1e-6
-) -> torch.Tensor:
-    r"""
-    Tanimoto similarity between two batched tensors, across last 2 dimensions.
-    eps argument ensures numerical stability if all zero tensors are added. Tanimoto similarity is proportional to:
-
-    (<x, y>) / (||x||^2 + ||y||^2 - <x, y>)
-
-    where x and y may be bit or count vectors or in set notation:
-
-    |A \cap B | / |A| + |B| - |A \cap B |
-
-    Args:
-        x1: `[b x n x d]` Tensor where b is the batch dimension
-        x2: `[b x m x d]` Tensor
-        eps: Float for numerical stability. Default value is 1e-6
-    Returns:
-        Tensor denoting the Tanimoto similarity.
-    #from here https://github.com/leojklarner/gauche/blob/main/gauche/kernels/fingerprint_kernels/tanimoto_kernel.py
-    """
-
-    if x1.ndim < 2 or x2.ndim < 2:
-        raise ValueError("Tensors must have a batch dimension")
-
-    dot_prod = torch.matmul(x1, torch.transpose(x2, -1, -2))
-    x1_norm = torch.sum(x1**2, dim=-1, keepdims=True)
-    x2_norm = torch.sum(x2**2, dim=-1, keepdims=True)
-
-    tan_similarity = (dot_prod + eps) / (
-        eps + x1_norm + torch.transpose(x2_norm, -1, -2) - dot_prod
-    )
-
-    return tan_similarity.clamp_min_(
-        0
-    )  # zero out negative values for numerical stability
-
-
-class TanimotoKernel(Kernel):
-    r"""
-     Computes a covariance matrix based on the Tanimoto kernel
-     between inputs :math:`\mathbf{x_1}` and :math:`\mathbf{x_2}`:
-
-     .. math::
-
-    \begin{equation*}
-     k_{\text{Tanimoto}}(\mathbf{x}, \mathbf{x'}) = \frac{\langle\mathbf{x},
-     \mathbf{x'}\rangle}{\left\lVert\mathbf{x}\right\rVert^2 + \left\lVert\mathbf{x'}\right\rVert^2 -
-     \langle\mathbf{x}, \mathbf{x'}\rangle}
-    \end{equation*}
-
-    .. note::
-
-     This kernel does not have an `outputscale` parameter. To add a scaling parameter,
-     decorate this kernel with a :class:`gpytorch.test_kernels.ScaleKernel`.
-
-     Example:
-         >>> x = torch.randint(0, 2, (10, 5))
-         >>> # Non-batch: Simple option
-         >>> covar_module = gpytorch.kernels.ScaleKernel(TanimotoKernel())
-         >>> covar = covar_module(x)  # Output: LazyTensor of size (10 x 10)
-         >>>
-         >>> batch_x = torch.randint(0, 2, (2, 10, 5))
-         >>> # Batch: Simple option
-         >>> covar_module = gpytorch.kernels.ScaleKernel(TanimotoKernel())
-         >>> covar = covar_module(batch_x)  # Output: LazyTensor of size (2 x 10 x 10)
-    """
-
-    is_stationary = False
-    has_lengthscale = False
-
-    def __init__(self, **kwargs):
-        super(TanimotoKernel, self).__init__(**kwargs)
-
-    def forward(self, x1, x2, diag=False, **params):
-        if diag:
-            assert x1.size() == x2.size() and torch.equal(x1, x2)
-            return torch.ones(
-                *x1.shape[:-2], x1.shape[-2], dtype=x1.dtype, device=x1.device
-            )
-        else:
-            return self.covar_dist(x1, x2, **params)
-
-    def covar_dist(
-        self,
-        x1,
-        x2,
-        last_dim_is_batch=False,
-        **params,
-    ):
-        r"""This is a helper method for computing the bit vector similarity between
-        all pairs of points in x1 and x2.
-
-        Args:
-            :attr:`x1` (Tensor `n x d` or `b1 x ... x bk x n x d`):
-                First set of data.
-            :attr:`x2` (Tensor `m x d` or `b1 x ... x bk x m x d`):
-                Second set of data.
-            :attr:`last_dim_is_batch` (tuple, optional):
-                Is the last dimension of the data a batch dimension or not?
-
-        Returns:
-            (:class:`Tensor`, :class:`Tensor) corresponding to the distance matrix between `x1` and `x2`.
-            The shape depends on the kernel's mode
-            * `diag=False`
-            * `diag=False` and `last_dim_is_batch=True`: (`b x d x n x n`)
-            * `diag=True`
-            * `diag=True` and `last_dim_is_batch=True`: (`b x d x n`)
-        """
-        if last_dim_is_batch:
-            x1 = x1.transpose(-1, -2).unsqueeze(-1)
-            x2 = x2.transpose(-1, -2).unsqueeze(-1)
-
-        return batch_tanimoto_sim(x1, x2)
-
-
-def update_model(
-    X,
-    y,
-    bounds_norm,
-    kernel_type,
-    fit_y=True,
-    FIT_METHOD=True,
-    surrogate="GP",
-):
-    """
-    Update and return a Gaussian Process (GP) model with new training data.
-    This function configures and optimizes the GP model based on the provided parameters.
-
-    Args:
-        X (numpy.ndarray): The training data, typically feature vectors.
-        y (numpy.ndarray): The corresponding labels or values for the training data.
-        bounds_norm (numpy.ndarray): Normalization bounds for the training data.
-        kernel_type (str, optional): Type of kernel to be used in the GP model. Default is "Tanimoto".
-        fit_y (bool, optional): Flag to indicate if the output values (y) should be fitted. Default is True.
-        FIT_METHOD (bool, optional): Flag to indicate the fitting method to be used. Default is True.
-        surrogate (str, optional): Type of surrogate model to be used. Default is "GP".
-
-    Returns:
-        model (botorch.models.gpytorch.GP): The updated GP model, fitted with the provided training data.
-        scaler_y (TensorStandardScaler): The scaler used for the labels, which can be applied for future data normalization.
-
-    Notes:
-        The function initializes a GP model with specified kernel and fitting methods, then fits the model to the provided data.
-        The 'bounds_norm' parameter is used for normalizing the training data within the GP model.
-        The 'fit_y' and 'FIT_METHOD' parameters control the fitting behavior of the model.
-    """
-
-    GP_class = Surrogate_Model(
-        kernel_type=kernel_type,
-        bounds_norm=bounds_norm,
-        fit_y=fit_y,
-        FIT_METHOD=FIT_METHOD,
-        surrogate=surrogate,
-    )
-    model = GP_class.fit(X, y)
-
-    return model, GP_class.scaler_y
-
-
-class TensorStandardScaler:
-    """
-    StandardScaler for tensors that standardizes features by removing the mean
-    and scaling to unit variance, as defined in BoTorch.
-
-    Attributes:
-        dim (int): The dimension over which to compute the mean and standard deviation.
-        epsilon (float): A small constant to avoid division by zero in case of a zero standard deviation.
-        mean (Tensor, optional): The mean value computed in the `fit` method. None until `fit` is called.
-        std (Tensor, optional): The standard deviation computed in the `fit` method. None until `fit` is called.
-
-    Args:
-        dim (int): The dimension over which to standardize the data. Default is -2.
-        epsilon (float): A small constant to avoid division by zero. Default is 1e-9.
-    """
-
-    def __init__(self, dim: int = -2, epsilon: float = 1e-9):
-        self.dim = dim
-        self.epsilon = epsilon
-        self.mean = None
-        self.std = None
-
-    def fit(self, Y):
-        if isinstance(Y, np.ndarray):
-            Y = torch.from_numpy(Y).float()
-        self.mean = Y.mean(dim=self.dim, keepdim=True)
-        self.std = Y.std(dim=self.dim, keepdim=True)
-        self.std = self.std.where(
-            self.std >= self.epsilon, torch.full_like(self.std, 1.0)
-        )
-
-    def transform(self, Y):
-        if self.mean is None or self.std is None:
-            raise ValueError(
-                "Mean and standard deviation not initialized, run `fit` method first."
-            )
-        original_type = None
-        if isinstance(Y, np.ndarray):
-            original_type = np.ndarray
-            Y = torch.from_numpy(Y).float()
-        Y_transformed = (Y - self.mean) / self.std
-        if original_type is np.ndarray:
-            return Y_transformed.numpy()
-        else:
-            return Y_transformed
-
-    def fit_transform(self, Y):
-        self.fit(Y)
-        return self.transform(Y)
-
-    def inverse_transform(self, Y):
-        if self.mean is None or self.std is None:
-            raise ValueError(
-                "Mean and standard deviation not initialized, run `fit` method first."
-            )
-        original_type = None
-        if isinstance(Y, np.ndarray):
-            original_type = np.ndarray
-            Y = torch.from_numpy(Y).float()
-        Y_inv_transformed = (Y * self.std) + self.mean
-        if original_type is np.ndarray:
-            return Y_inv_transformed.numpy()
-        else:
-            return Y_inv_transformed
-
-
-class Surrogate_Model:
-
-    def __init__(
-        self,
-        kernel_type,
-        bounds_norm=None,
-        fit_y=True,
-        FIT_METHOD=True,
-        surrogate="GP",
-    ):
-        self.kernel_type = kernel_type
-        self.bounds_norm = bounds_norm
-        self.fit_y = fit_y
-        self.surrogate = surrogate
-        self.FIT_METHOD = FIT_METHOD
-        self.scaler_y = TensorStandardScaler()
-
-    def fit(self, X_train, y_train):
-        if type(X_train) == np.ndarray:
-            X_train = torch.tensor(X_train, dtype=torch.float32)
-
-        if self.fit_y:
-            y_train = self.scaler_y.fit_transform(y_train)
-        else:
-            y_train = y_train
-
-        self.X_train_tensor = torch.tensor(X_train, dtype=torch.float64)
-        self.y_train_tensor = torch.tensor(y_train, dtype=torch.float64).view(-1, 1)
-
-        """
-        Use BoTorch fit method
-        to fit the hyperparameters of the GP and the model weights
-        """
-        if self.kernel_type == "Tanimoto":
-            kernel = TanimotoKernel()
-        elif self.kernel_type == "Matern":
-            kernel = gpytorch.kernels.MaternKernel()
-        elif self.kernel_type == "Linear":
-            kernel = gpytorch.kernels.LinearKernel()
-        else:
-            raise ValueError("Invalid kernel type.")
-
-        class InternalGP(SingleTaskGP):
-            def __init__(self, train_X, train_Y, kernel):
-                super().__init__(train_X, train_Y)
-                self.mean_module = ConstantMean()
-                self.covar_module = ScaleKernel(kernel)
-        self.gp = InternalGP(self.X_train_tensor, self.y_train_tensor, kernel)
-        self.gp.likelihood.noise_constraint = gpytorch.constraints.GreaterThan(1e-3)
-
-        self.mll = ExactMarginalLogLikelihood(self.gp.likelihood, self.gp)
-        self.mll.to(self.X_train_tensor)
-
-        fit_gpytorch_model(self.mll, max_retries=50000)
-
-        self.gp.eval()
-        self.mll.eval()
-
-        return self.gp
 
 
 def inchi_to_smiles(inchi_list):
@@ -337,218 +42,7 @@ def inchi_to_smiles(inchi_list):
     return smiles_list
 
 
-class FingerprintGenerator:
-    def __init__(self, nBits=512, radius=2):
-        self.nBits = nBits
-        self.radius = radius
 
-    def featurize(self, smiles_list):
-        fingerprints = []
-        for smiles in smiles_list:
-            if not isinstance(smiles, str):
-                fingerprints.append(np.ones(self.nBits))
-            else:
-                mol = Chem.MolFromSmiles(smiles)
-                if mol is not None:
-                    fp = AllChem.GetMorganFingerprintAsBitVect(
-                        mol, self.radius, nBits=self.nBits
-                    )
-                    fp_array = np.array(
-                        list(fp.ToBitString()), dtype=int
-                    )  # Convert to NumPy array
-                    fingerprints.append(fp_array)
-                else:
-                    print(f"Could not generate a molecule from SMILES: {smiles}")
-                    fingerprints.append(np.array([None]))
-
-        return np.array(fingerprints)
-
-
-def convert2pytorch(X, y, type_X="float"):
-    if type_X == "float":
-        X = torch.from_numpy(X).float()
-    elif type_X == "int":
-        X = torch.from_numpy(X).int()
-    else:
-        raise ValueError("Invalid type for X.")
-    y = torch.from_numpy(y).float().reshape(-1, 1)
-    return X, y
-
-
-def check_entries(array_of_arrays):
-    """
-    Check if the entries of the arrays are between 0 and 1.
-    Needed for for the datasets.py script.
-    """
-
-    for array in array_of_arrays:
-        for item in array:
-            if item < 0 or item > 1:
-                return False
-    return True
-
-
-class directaryl:
-    def __init__(self):
-        # direct arylation reaction
-        self.ECFP_size = 512
-        self.radius = 4
-        self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
-        dataset_url = "https://raw.githubusercontent.com/doyle-lab-ucla/edboplus/main/examples/publication/BMS_yield_cost/data/PCI_PMI_cost_full.csv"
-        self.data = pd.read_csv(dataset_url)
-        self.data = self.data.sample(frac=1, random_state=666).reset_index(drop=True)
-        # create a copy of the data
-        data_copy = self.data.copy()
-        # remove the Yield column from the copy
-        data_copy.drop("Yield", axis=1, inplace=True)
-        # check for duplicates
-        duplicates = data_copy.duplicated().any()
-        if duplicates:
-            print("There are duplicates in the dataset.")
-            exit()
-
-        self.data["Base_SMILES"] = inchi_to_smiles(self.data["Base_inchi"].values)
-        self.data["Ligand_SMILES"] = inchi_to_smiles(self.data["Ligand_inchi"].values)
-        self.data["Solvent_SMILES"] = inchi_to_smiles(self.data["Solvent_inchi"].values)
-        col_0_base = self.ftzr.featurize(self.data["Base_SMILES"])
-        col_1_ligand = self.ftzr.featurize(self.data["Ligand_SMILES"])
-        col_2_solvent = self.ftzr.featurize(self.data["Solvent_SMILES"])
-        col_3_concentration = self.data["Concentration"].to_numpy().reshape(-1, 1)
-        col_4_temperature = self.data["Temp_C"].to_numpy().reshape(-1, 1)
-        self.X = np.concatenate(
-            [
-                col_0_base,
-                col_1_ligand,
-                col_2_solvent,
-                col_3_concentration,
-                col_4_temperature,
-            ],
-            axis=1,
-        )
-        self.experiments = np.concatenate(
-            [
-                self.data["Base_SMILES"].to_numpy().reshape(-1, 1),
-                self.data["Ligand_SMILES"].to_numpy().reshape(-1, 1),
-                self.data["Solvent_SMILES"].to_numpy().reshape(-1, 1),
-                self.data["Concentration"].to_numpy().reshape(-1, 1),
-                self.data["Temp_C"].to_numpy().reshape(-1, 1),
-                self.data["Yield"].to_numpy().reshape(-1, 1),
-            ],
-            axis=1,
-        )
-
-        self.y = self.data["Yield"].to_numpy()
-        self.all_ligands = self.data["Ligand_SMILES"].to_numpy()
-        self.all_bases = self.data["Base_SMILES"].to_numpy()
-        self.all_solvents = self.data["Solvent_SMILES"].to_numpy()
-        unique_bases = np.unique(self.data["Base_SMILES"])
-        unique_ligands = np.unique(self.data["Ligand_SMILES"])
-        unique_solvents = np.unique(self.data["Solvent_SMILES"])
-        unique_concentrations = np.unique(self.data["Concentration"])
-        unique_temperatures = np.unique(self.data["Temp_C"])
-
-        max_yield_per_ligand = np.array(
-            [
-                max(self.data[self.data["Ligand_SMILES"] == unique_ligand]["Yield"])
-                for unique_ligand in unique_ligands
-            ]
-        )
-
-        self.worst_ligand = unique_ligands[np.argmin(max_yield_per_ligand)]
-        self.best_ligand = unique_ligands[np.argmax(max_yield_per_ligand)]
-
-        self.where_worst_ligand = np.array(
-            self.data.index[self.data["Ligand_SMILES"] == self.worst_ligand].tolist()
-        )
-
-        self.feauture_labels = {
-            "names": {
-                "bases": unique_bases,
-                "ligands": unique_ligands,
-                "solvents": unique_solvents,
-                "concentrations": unique_concentrations,
-                "temperatures": unique_temperatures,
-            },
-            "ordered_smiles": {
-                "bases": self.data["Base_SMILES"],
-                "ligands": self.data["Ligand_SMILES"],
-                "solvents": self.data["Solvent_SMILES"],
-                "concentrations": self.data["Concentration"],
-                "temperatures": self.data["Temp_C"],
-            },
-        }
-
-
-class Evaluation_data_directaryl:
-    def __init__(
-        self
-    ):
-        self.get_raw_dataset()
-
-        rep_size = self.X.shape[1]
-        self.bounds_norm = torch.tensor([[0] * rep_size, [1] * rep_size])
-        self.bounds_norm = self.bounds_norm.to(dtype=torch.float32)
-
-        if not check_entries(self.X):
-            #print("###############################################")
-            #print(
-            #    "Entries of X are not between 0 and 1. Adding MinMaxScaler to the pipeline."
-            #)
-            #print("###############################################")
-
-            self.scaler_X = MinMaxScaler()
-            self.X = self.scaler_X.fit_transform(self.X)
-
-    def get_raw_dataset(self):
-        # https://github.com/doyle-lab-ucla/edboplus/blob/main/examples/publication/BMS_yield_cost/data/PCI_PMI_cost_full_update.csv
-
-        BMS = directaryl()
-        self.data = BMS.data
-        self.experiments = BMS.experiments
-        self.X, self.y = BMS.X, BMS.y
-
-        self.all_ligands = BMS.all_ligands
-        self.all_bases = BMS.all_bases
-        self.all_solvents = BMS.all_solvents
-
-        self.best_ligand = BMS.best_ligand
-        self.worst_ligand = BMS.worst_ligand
-        self.where_worst_ligand = BMS.where_worst_ligand
-        self.feauture_labels = BMS.feauture_labels
-
-
-    def get_init_holdout_data(self, SEED):
-        random.seed(SEED)
-        torch.manual_seed(SEED)
-        np.random.seed(SEED)
-
-        indices_init = np.random.choice(self.where_worst_ligand[:200], size=48, replace=False)
-        exp_init = self.experiments[indices_init]
-        indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
-
-        np.random.shuffle(indices_init)
-        np.random.shuffle(indices_holdout)
-
-        X_init, y_init = self.X[indices_init], self.y[indices_init]
-        X_holdout, y_holdout = self.X[indices_holdout], self.y[indices_holdout]
-        exp_holdout = self.experiments[indices_holdout]
-
-        LIGANDS_INIT = self.all_ligands[indices_init]
-        LIGANDS_HOLDOUT = self.all_ligands[indices_holdout]
-
-        X_init, y_init = convert2pytorch(X_init, y_init)
-        X_holdout, y_holdout = convert2pytorch(X_holdout, y_holdout)
-
-        return (
-            X_init,
-            y_init,
-            X_holdout,
-            y_holdout,
-            LIGANDS_INIT,
-            LIGANDS_HOLDOUT,
-            exp_init,
-            exp_holdout,
-        )
 
 
 def find_indices(X_candidate_BO, candidates):
@@ -667,66 +161,6 @@ def compute_outlier_measure_single(dist):
     return max_value_score.item()
 
 
-def init_directaryl(seed):
-  # Initialize data from dataset
-  DATASET = Evaluation_data_directaryl()
-  bounds_norm = DATASET.bounds_norm
-
-  (
-      X_init,
-      y_init,
-      X_pool_fixed,
-      y_pool_fixed,
-      _,
-      _,
-      _,
-      _,
-  ) = DATASET.get_init_holdout_data(seed)
-
-  # Construct initial shitty model
-  model, _ = update_model(
-      X_init, y_init, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True
-  )
-
-  # Copy things to avoid problems later
-  X_train = np.copy(X_init)
-  y_train = np.copy(y_init)
-  X_pool = np.copy(X_pool_fixed)
-  y_pool = np.copy(y_pool_fixed)
-
-  return model, X_train, y_train, X_pool, y_pool, bounds_norm
-
-
-
-def init_formed(seed):
-    # Initialize data from dataset
-    DATASET = formed(new_parse=False, SMILES_MODE=True)
-    bounds_norm = DATASET.bounds_norm
-    
-    (
-        X_init,
-        y_init,
-        X_pool_fixed,
-        y_pool_fixed,
-        smiles_init,
-        smiles_pool,
-    ) = DATASET.get_init_holdout_data(seed)
-    
-    # Construct initial shitty model
-    model, _ = update_model(
-        X_init, y_init, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True
-    )
-    
-    # Copy things to avoid problems later
-    X_train = np.copy(X_init)
-    y_train = np.copy(y_init)
-    X_pool = np.copy(X_pool_fixed)
-    y_pool = np.copy(y_pool_fixed)
-    
-    return model, X_train, y_train, X_pool, y_pool, bounds_norm
-
-
-
 def bo_above(q, seed, max_iterations=100):
 
   model, X_train, y_train, X_pool, y_pool, bounds_norm = init_directaryl(seed)
@@ -748,27 +182,35 @@ def bo_above(q, seed, max_iterations=100):
   return n_experiments, n_iter
 
 
-def bo_above_flex_batch(q_arr, seed, max_iterations=100):
+def bo_above_flex_batch(q_arr, seed,dataset, max_iterations=100):
+    if dataset == 'formed':
+        model, X_train, y_train, X_pool, y_pool, bounds_norm = init_formed(seed)
+    elif dataset == 'directaryl':
+        model, X_train, y_train, X_pool, y_pool, bounds_norm = init_directaryl(seed)
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
+    # Count experiments
+    n_experiments = 0
+    for i in range(max_iterations):
+        q = q_arr[i] if i<len(q_arr) else q_arr[-1]
+        print(f'{i=} {q=} {seed=}')
+        is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, _ = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
+        n_experiments += n_experiments_incr
+        if is_found is True:
+            break
 
-  model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
-
-  # Count experiments
-  n_experiments = 0
-
-  for i in range(max_iterations):
-    q = q_arr[i] if i<len(q_arr) else q_arr[-1]
-    print(f'{i=} {q=} {seed=}')
-    is_found, n_experiments_incr, model, X_train, y_train, X_pool, y_pool, _ = bo_inner(model, bounds_norm, q, X_train, y_train, X_pool, y_pool)
-    n_experiments += n_experiments_incr
-    if is_found is True:
-      break
-
-  return n_experiments, i+1
+    return n_experiments, i+1
 
 
-def bo_above_adaptive_batch(q0, seed, max_iterations=100):
-
-    model, X_train, y_train, X_pool, y_pool, bounds_norm = init_stuff(seed)
+def bo_above_adaptive_batch(q0, seed,dataset, max_iterations=100):
+    if dataset == "formed":
+        model, X_train, y_train, X_pool, y_pool, bounds_norm = init_formed(seed)
+    elif dataset == "directaryl":
+        model, X_train, y_train, X_pool, y_pool, bounds_norm = init_directaryl(seed)
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
+    
+    model, X_train, y_train, X_pool, y_pool, bounds_norm = init_directaryl(seed)
 
     # Count experiments
     n_experiments = 0
@@ -795,128 +237,14 @@ def bo_above_adaptive_batch(q0, seed, max_iterations=100):
     return n_experiments, i+1
 
 
-# Function to pad the arrays
-def pad_array(arr, target_length):
-    padding = target_length - len(arr)
-    return np.pad(arr, (0, padding), "constant")
 
 
-class formed:
-    def __init__(self, new_parse=True, SMILES_MODE=True):
-        # https://archive.materialscloud.org/record/2022.162
-        self.max_N = 2000000
-        self.datapath = "/home/jan/Downloads/formed"
-        self.SMILES_MODE = SMILES_MODE
-        self.new_parse = new_parse
-        self.bounds_norm = None
-
-        if self.new_parse:
-            self.data = pd.read_csv(
-                self.datapath + "/Data_FORMED_scored.csv",
-                usecols=["name", "Canonical_Smiles", "gap"],
-                delimiter=','
-            )
-            self.data.dropna(axis=0, inplace=True)  # Drop rows with NA values
-            self.data.reset_index(drop=True, inplace=True)  # Reset the index and drop the old index
-            self.data.drop_duplicates(subset='Canonical_Smiles', keep='first', inplace=True, ignore_index=True)
-            # @Jan check the two above lines, if you'd like keep the initial indices remove 'ignore_index=True'
-
-            self.names = self.data["name"].values
-            self.smiles = self.data["Canonical_Smiles"].values
-            self.y = self.data['gap'].values
-
-            indices = np.arange(len(self.names))
-            np.random.shuffle(indices)
-            self.names = self.names[indices]
-            self.smiles = self.smiles[indices]
-            self.y = self.y[indices]
-
-            self.names = self.names[: self.max_N]
-            self.smiles = self.smiles[: self.max_N]
-            self.y = self.y[: self.max_N]
-
-            if self.SMILES_MODE:
-                self.ECFP_size = 512 #1024
-                self.radius = 4
-                self.ftzr = FingerprintGenerator(nBits=self.ECFP_size, radius=self.radius)
-                self.X = self.ftzr.featurize(self.smiles)
-                self.scaler_X = MinMaxScaler()
-                self.X = self.scaler_X.fit_transform(self.X)
-                #unique_rows, indices, counts = np.unique(self.X, axis=0, return_index=True, return_counts=True)
-                np.savez_compressed(
-                    self.datapath + "/formed_SMILES.npz", names=self.names, X=self.X, y=self.y, smiles=self.smiles
-                )
-            else:
-                self.X = []
-                keep_inds = []
-                for i, name in tqdm(enumerate(self.names)):
-                    mol = compound.xyz_to_mol(self.datapath + "/XYZ_FORMED/{}.xyz".format(name), "def2svp")
-                    spahm_rep = spahm.compute_spahm.get_spahm_representation(mol, "lb")[0]
-                    self.X.append(spahm_rep)
-                    keep_inds.append(i)
-                max_length = max(len(item) for item in self.X)
-                self.X = np.array([pad_array(item, max_length) for item in self.X])
-
-                self.scaler_X = MinMaxScaler()
-                self.X = self.scaler_X.fit_transform(self.X)
-                np.savez_compressed(self.datapath + "/formed_SPAHM.npz",names=self.names, X=self.X, y=self.y, smiles=self.smiles
-                )
-
-        else:
-            if self.SMILES_MODE:
-                data = np.load("/home/jan/Downloads/formed/formed_SMILES.npz", allow_pickle=True)
-            else:
-                data = np.load("/home/jan/Downloads/formed/formed_SPAHM.npz", allow_pickle=True)
-
-            self.names = data['names']
-            self.X = data['X']
-            self.y = data['y']
-            self.smiles = data['smiles']
-
-    def get_init_holdout_data(self, SEED):
-        random.seed(SEED)
-        torch.manual_seed(SEED)
-        np.random.seed(SEED)
-
-        indices_init = np.random.choice(np.arange(len(self.X)), size=200, replace=False)
-        indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
-
-        np.random.shuffle(indices_init)
-        np.random.shuffle(indices_holdout)
-
-        X_init, y_init, smiles_init = self.X[indices_init], self.y[indices_init], self.smiles[indices_init]
-        X_holdout, y_holdout, smiles_holdout = self.X[indices_holdout], self.y[indices_holdout], self.smiles[indices_holdout]
-
-        if max(y_init) > max(y_holdout):
-            ind_max = np.argmax(y_init)
-            X_holdout = np.vstack([X_holdout, X_init[ind_max]])
-            y_holdout = np.append(y_holdout, y_init[ind_max])
-            X_init    = np.delete(X_init, ind_max, axis=0)
-            y_init    = np.delete(y_init, ind_max, axis=0)
-            smiles_init = np.delete(smiles_init, ind_max, axis=0)
-            smiles_holdout = np.append(smiles_holdout, smiles_init[ind_max])
-
-        if self.SMILES_MODE:
-            X_init, y_init = convert2pytorch(X_init, y_init, type_X="int")
-            X_holdout, y_holdout = convert2pytorch(X_holdout, y_holdout, type_X="int")
-
-        else:
-            X_init, y_init = convert2pytorch(X_init, y_init, type_X="float")
-            X_holdout, y_holdout = convert2pytorch(X_holdout, y_holdout, type_X="float")
-        return (
-            X_init,
-            y_init,
-            X_holdout,
-            y_holdout,
-            smiles_init,
-            smiles_holdout
-        )
 
 
-if __name__ == '__main__':
+#if __name__ == '__main__':
     """
     Example how to load and fit the FORMED dataset
-    """
+    
     FORMED_DATASET  = formed(new_parse=True, SMILES_MODE=True)
     X_init, y_init, X_holdout, y_holdout, smiles_init, smiles_holdout = FORMED_DATASET.get_init_holdout_data(666)
     y = y_holdout.flatten().detach().numpy()
@@ -946,3 +274,4 @@ if __name__ == '__main__':
     plt.title('True vs Predicted')
     plt.savefig('true_vs_predicted_spham.png')
     plt.show()
+    """

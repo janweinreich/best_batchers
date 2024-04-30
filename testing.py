@@ -5,11 +5,11 @@ np.random.seed(777)
 import torch
 from botorch.exceptions import InputDataWarning
 import warnings
-from functions import init_directaryl
 from botorch.acquisition.monte_carlo import qNoisyExpectedImprovement
 from botorch.sampling import SobolQMCNormalSampler
 
 from functions import *
+import pdb
 
 # To ignore a specific UserWarning about tensor construction
 warnings.filterwarnings('ignore', message='.*To copy construct from a tensor.*', category=UserWarning)
@@ -27,7 +27,7 @@ else:
 dtype = torch.float
 
 
-max_batch_size = 8   # 10
+max_batch_size = 5 #8   # 10
 n_seeds = 20          # 10
 max_iterations = 10  # 20
 
@@ -36,16 +36,27 @@ yield_thr= 16.0  #99.5, Molecule with largest gap: FC(F)OC(F)C(F)(F)F 16.38479
 n_best = 10000
 qarr = np.arange(2, max_batch_size+1, 1)
 
-NEW = False
+NEW = True
 
 if NEW:
     alphas_q = []
+    exp_count = []
+    timing_count = []
     for q0 in qarr:
         inter_med_alphas = []
+        inter_med_n_experiments = []
+        inter_med_time = []
         for seed in range(n_seeds):
             print(f"q0: {q0}, seed: {seed}")
             model, X_train, y_train, X_pool, y_pool, bounds_norm = init_formed(seed)
+            n_experiments = 0
+            timing = 0
+
             for i in range(max_iterations):
+
+
+
+                print(f"Best value: {max(y_train)}")
 
                 sampler = SobolQMCNormalSampler(1024, seed=666)
 
@@ -66,7 +77,6 @@ if NEW:
                     / best_acq_values.std(axis=1).mean().item()
                 )
                 print({"q": q0, "i": i, "best_acq_values_norm": best_acq_values_norm})
-                
 
                 # See how they actually look
                 X_candidate = np.array(X_candidate[0])
@@ -84,7 +94,6 @@ if NEW:
                 # If we got good performance, we are done
                 success = any(y_candidate > yield_thr)
 
-
                 # print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
                 X_train = np.vstack([X_train, X_candidate])
                 y_train = np.concatenate([y_train, y_candidate])
@@ -92,11 +101,24 @@ if NEW:
 
                 inter_med_alphas.append(best_acq_values_norm)
 
-        alphas_q.append(inter_med_alphas)
+                if success:
+                    print("We found some good candidate! :)")
 
-    #pdb.set_trace()
+                    break
+
+                inter_med_n_experiments.append(n_experiments)
+                inter_med_time.append(timing)
+                n_experiments += q0
+                timing += 1
+
+        alphas_q.append(inter_med_alphas)
+        exp_count.append(inter_med_n_experiments)
+        timing_count.append(inter_med_time)
+
+
+    pdb.set_trace()
     alphas_q = np.array(alphas_q)
-    #save the average alphas
+    # save the average alphas
     np.save("alphas.npy", alphas_q)
     fig, ax = plt.subplots()
     # plot the average alphas over iterations
@@ -115,5 +137,3 @@ else:
         ax.plot(alphas_q[q], label=f"q={qarr[q]}")
     plt.legend()
     plt.savefig("alphas_2.png")
-    
-    pdb.set_trace()
