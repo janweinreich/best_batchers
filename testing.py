@@ -27,12 +27,12 @@ else:
 dtype = torch.float
 
 
-max_batch_size = 5 #8   # 10
-n_seeds = 20          # 10
-max_iterations = 10  # 20
+max_batch_size = 3 #8   # 10
+n_seeds = 2          # 10
+max_iterations = 20  # 20
 
 
-yield_thr= 16.0  #99.5, Molecule with largest gap: FC(F)OC(F)C(F)(F)F 16.38479
+target_thr= 14.5  #99.5, Molecule with largest gap: FC(F)OC(F)C(F)(F)F 16.38479
 n_best = 10000
 qarr = np.arange(2, max_batch_size+1, 1)
 
@@ -42,22 +42,23 @@ if NEW:
     alphas_q = []
     exp_count = []
     timing_count = []
+    all_y_best = []
     for q0 in qarr:
         inter_med_alphas = []
         inter_med_n_experiments = []
         inter_med_time = []
+        inter_med_best = []
+
         for seed in range(n_seeds):
             print(f"q0: {q0}, seed: {seed}")
             model, X_train, y_train, X_pool, y_pool, bounds_norm = init_formed(seed)
+
             n_experiments = 0
             timing = 0
 
             for i in range(max_iterations):
 
-
-
                 print(f"Best value: {max(y_train)}")
-
                 sampler = SobolQMCNormalSampler(1024, seed=666)
 
                 # Set up aqf
@@ -84,15 +85,12 @@ if NEW:
                 indices_keep = np.setdiff1d(np.arange(X_pool.shape[0]), indices)
                 y_candidate = y_pool[indices]
 
-                # We also count the number of experiments conducted
-                n_experiments = y_candidate.shape[0]
-
                 # Remove from pool
                 X_pool = X_pool[indices_keep]
                 y_pool = y_pool[indices_keep]
 
                 # If we got good performance, we are done
-                success = any(y_candidate > yield_thr)
+                success = any(y_candidate > target_thr)
 
                 # print(f"The best we could do in this selected batch was {max(y_candidate)}! :(")
                 X_train = np.vstack([X_train, X_candidate])
@@ -100,31 +98,35 @@ if NEW:
                 model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
 
                 inter_med_alphas.append(best_acq_values_norm)
-
-                if success:
-                    print("We found some good candidate! :)")
-
-                    break
-
-                inter_med_n_experiments.append(n_experiments)
-                inter_med_time.append(timing)
                 n_experiments += q0
                 timing += 1
+
+                if success:
+                    break
+
+            inter_med_n_experiments.append(n_experiments)
+            inter_med_time.append(timing)
+            inter_med_best.append(max(y_train)[0])
 
         alphas_q.append(inter_med_alphas)
         exp_count.append(inter_med_n_experiments)
         timing_count.append(inter_med_time)
+        all_y_best.append(inter_med_best)
 
-
-    pdb.set_trace()
     alphas_q = np.array(alphas_q)
-    # save the average alphas
-    np.save("alphas.npy", alphas_q)
+    exp_count = np.array(exp_count)
+    timing_count = np.array(timing_count)
+    all_y_best = np.array(all_y_best)
+    # save all arrays in a single file
+    np.savez_compressed("results.npz", alphas_q=alphas_q, exp_count=exp_count, timing_count=timing_count, all_y_best=all_y_best)
+
+
     fig, ax = plt.subplots()
     # plot the average alphas over iterations
     ax.plot(alphas_q)
 
     plt.savefig("alphas.png")
+    pdb.set_trace()
 
 else:
     alphas_q = np.load("alphas.npy")
