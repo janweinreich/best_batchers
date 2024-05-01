@@ -281,14 +281,12 @@ class formed:
     def __init__(self, new_parse=True, SMILES_MODE=True):
         # https://archive.materialscloud.org/record/2022.162
         self.max_N = 2000000
-        self.datapath = "/home/jan/Downloads/formed"
         self.SMILES_MODE = SMILES_MODE
         self.new_parse = new_parse
         self.bounds_norm = None
 
         if self.new_parse:
-            self.data = pd.read_csv(
-                self.datapath + "/Data_FORMED_scored.csv",
+            self.data = pd.read_csv("Data_FORMED_scored.csv",
                 usecols=["name", "Canonical_Smiles", "gap"],
                 delimiter=",",
             )
@@ -324,9 +322,8 @@ class formed:
                 self.X = self.ftzr.featurize(self.smiles)
                 self.scaler_X = MinMaxScaler()
                 self.X = self.scaler_X.fit_transform(self.X)
-                # unique_rows, indices, counts = np.unique(self.X, axis=0, return_index=True, return_counts=True)
-                np.savez_compressed(
-                    self.datapath + "/formed_SMILES.npz",
+                
+                np.savez_compressed("formed_SMILES.npz",
                     names=self.names,
                     X=self.X,
                     y=self.y,
@@ -336,8 +333,7 @@ class formed:
                 self.X = []
                 keep_inds = []
                 for i, name in tqdm(enumerate(self.names)):
-                    mol = compound.xyz_to_mol(
-                        self.datapath + "/XYZ_FORMED/{}.xyz".format(name), "def2svp"
+                    mol = compound.xyz_to_mol("XYZ_FORMED/{}.xyz".format(name), "def2svp"
                     )
                     spahm_rep = spahm.compute_spahm.get_spahm_representation(mol, "lb")[
                         0
@@ -349,8 +345,7 @@ class formed:
 
                 self.scaler_X = MinMaxScaler()
                 self.X = self.scaler_X.fit_transform(self.X)
-                np.savez_compressed(
-                    self.datapath + "/formed_SPAHM.npz",
+                np.savez_compressed("formed_SPAHM.npz",
                     names=self.names,
                     X=self.X,
                     y=self.y,
@@ -360,11 +355,11 @@ class formed:
         else:
             if self.SMILES_MODE:
                 data = np.load(
-                    "/home/jan/Downloads/formed/formed_SMILES.npz", allow_pickle=True
+                    "formed_SMILES.npz", allow_pickle=True
                 )
             else:
                 data = np.load(
-                    "/home/jan/Downloads/formed/formed_SPAHM.npz", allow_pickle=True
+                    "formed_SPAHM.npz", allow_pickle=True
                 )
 
             self.names = data["names"]
