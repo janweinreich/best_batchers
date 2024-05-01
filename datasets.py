@@ -5,7 +5,7 @@ import torch
 from BO_utils import update_model
 from sklearn.preprocessing import MinMaxScaler
 from rdkit import Chem
-
+from rdkit.Chem import AllChem
 
 # Function to pad the arrays
 def pad_array(arr, target_length):

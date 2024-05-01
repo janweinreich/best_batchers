@@ -27,12 +27,12 @@ else:
 dtype = torch.float
 
 
-max_batch_size = 3 #8   # 10
-n_seeds = 2          # 10
-max_iterations = 20  # 20
+max_batch_size = 8
+n_seeds = 15          
+max_iterations = 20
 
 
-target_thr= 14.5  #99.5, Molecule with largest gap: FC(F)OC(F)C(F)(F)F 16.38479
+target_thr= 15.0  #99.5, Molecule with largest gap: FC(F)OC(F)C(F)(F)F 16.38479
 n_best = 10000
 qarr = np.arange(2, max_batch_size+1, 1)
 
@@ -121,12 +121,11 @@ if NEW:
     np.savez_compressed("results.npz", alphas_q=alphas_q, exp_count=exp_count, timing_count=timing_count, all_y_best=all_y_best)
 
 
-    fig, ax = plt.subplots()
+    #fig, ax = plt.subplots()
     # plot the average alphas over iterations
-    ax.plot(alphas_q)
+    #ax.plot(alphas_q)
 
-    plt.savefig("alphas.png")
-    pdb.set_trace()
+    #plt.savefig("alphas.png")
 
 else:
     alphas_q = np.load("alphas.npy")
