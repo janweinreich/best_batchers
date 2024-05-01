@@ -410,7 +410,7 @@ class formed:
 
 def init_formed(seed):
     # Initialize data from dataset
-    DATASET = formed(new_parse=False, SMILES_MODE=True)
+    DATASET = formed(new_parse=True, SMILES_MODE=True)
     bounds_norm = DATASET.bounds_norm
 
     (
