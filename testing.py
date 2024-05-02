@@ -11,6 +11,7 @@ from botorch.sampling import SobolQMCNormalSampler
 from functions import *
 import pdb
 import pickle
+import bz2
 # To ignore a specific UserWarning about tensor construction
 warnings.filterwarnings('ignore', message='.*To copy construct from a tensor.*', category=UserWarning)
 # To ignore a specific InputDataWarning about input data not being standardized
