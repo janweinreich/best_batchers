@@ -10,7 +10,7 @@ from botorch.sampling import SobolQMCNormalSampler
 
 from functions import *
 import pdb
-
+import pickle
 # To ignore a specific UserWarning about tensor construction
 warnings.filterwarnings('ignore', message='.*To copy construct from a tensor.*', category=UserWarning)
 # To ignore a specific InputDataWarning about input data not being standardized
@@ -25,6 +25,34 @@ elif torch.cuda.is_available():
 else:
     device = torch.device("cpu")
 dtype = torch.float
+
+
+compress_fileopener = {True: bz2.BZ2File, False: open}
+pkl_compress_ending = {True: ".pkl.bz2", False: ".pkl"}
+
+
+def dump2pkl(obj, filename: str, compress: bool = False):
+    """
+    Dump an object to a pickle file.
+    obj : object to be saved
+    filename : name of the output file
+    compress : whether bz2 library is used for compressing the file.
+    """
+    output_file = compress_fileopener[compress](filename, "wb")
+    pickle.dump(obj, output_file)
+    output_file.close()
+
+
+def loadpkl(filename: str, compress: bool = False):
+    """
+    Load an object from a pickle file.
+    filename : name of the imported file
+    compress : whether bz2 compression was used in creating the loaded file.
+    """
+    input_file = compress_fileopener[compress](filename, "rb")
+    obj = pickle.load(input_file)
+    input_file.close()
+    return obj
 
 
 max_batch_size = 8
@@ -113,13 +141,8 @@ if NEW:
         timing_count.append(inter_med_time)
         all_y_best.append(inter_med_best)
 
-    alphas_q = np.array(alphas_q)
-    exp_count = np.array(exp_count)
-    timing_count = np.array(timing_count)
-    all_y_best = np.array(all_y_best)
-    # save all arrays in a single file
-    np.savez_compressed("results.npz", alphas_q=alphas_q, exp_count=exp_count, timing_count=timing_count, all_y_best=all_y_best)
 
+    dump2pkl({"alphas_q": alphas_q, "exp_count": exp_count, "timing_count": timing_count, "all_y_best": all_y_best}, "results.pkl")
 
     #fig, ax = plt.subplots()
     # plot the average alphas over iterations
