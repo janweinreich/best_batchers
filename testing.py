@@ -71,13 +71,14 @@ NEW_static = False
 
 
 if NEW_DYNAMIC:
-    qdyn = 8
-    #qdyn = np.array([6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,1,1,1,1])
+
+    # qdyn = np.array([6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,1,1,1,1])
     inter_med_alphas = []
     inter_med_n_experiments = []
     inter_med_time = []
     inter_med_best = []
     for seed in range(n_seeds):
+        qdyn = 8
         print(f"seed: {seed}")
         model, X_train, y_train, X_pool, y_pool, bounds_norm = init_formed(seed)
         best_y_now = max(y_train)[0]
