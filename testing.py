@@ -132,7 +132,8 @@ if NEW_DYNAMIC:
                 break
 
             if max(y_train)[0] > best_y_now:
-                qdyn = qdyn - 1
+                if qdyn > 1:
+                    qdyn = qdyn - 1
                 best_y_now = max(y_train)[0]
 
         inter_med_n_experiments.append(n_experiments)
