@@ -105,7 +105,7 @@ if NEW_DYNAMIC:
                 best_acq_values.mean(axis=1).mean().item()
                 / best_acq_values.std(axis=1).mean().item()
             )
-            print({"q": qdyn[i], "i": i, "best_acq_values_norm": best_acq_values_norm})
+            print({"q": qdyn, "i": i, "best_acq_values_norm": best_acq_values_norm})
 
             # See how they actually look
             X_candidate = np.array(X_candidate[0])
