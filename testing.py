@@ -67,11 +67,12 @@ qarr = np.arange(1, max_batch_size+1, 1)
 
 
 NEW_DYNAMIC = True
-NEW_static = True
+NEW_static = False
+
 
 if NEW_DYNAMIC:
-    qdyn = np.array([6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,1,1,1,1])
-
+    dyn = 8
+    #qdyn = np.array([6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,1,1,1,1])
     inter_med_alphas = []
     inter_med_n_experiments = []
     inter_med_time = []
@@ -79,7 +80,7 @@ if NEW_DYNAMIC:
     for seed in range(n_seeds):
         print(f"seed: {seed}")
         model, X_train, y_train, X_pool, y_pool, bounds_norm = init_formed(seed)
-
+        best_y_now = max(y_train)[0]
         n_experiments = 0
         timing = 0
 
@@ -92,13 +93,13 @@ if NEW_DYNAMIC:
             qNEI = qNoisyExpectedImprovement(model, torch.tensor(X_train), sampler)
             X_candidate, best_acq_values = optimize_acqf_discrete_modified(
             qNEI,
-            q=qdyn[i],
+            q=qdyn,
             choices=torch.tensor(X_pool),
             n_best=n_best,
             unique=True)
 
-            X_candidate = X_candidate.view(n_best, qdyn[i], X_candidate.shape[2])
-            best_acq_values = best_acq_values.view(n_best, qdyn[i])
+            X_candidate = X_candidate.view(n_best, qdyn, X_candidate.shape[2])
+            best_acq_values = best_acq_values.view(n_best, qdyn)
 
             best_acq_values_norm = (
                 best_acq_values.mean(axis=1).mean().item()
@@ -124,11 +125,15 @@ if NEW_DYNAMIC:
             y_train  = np.concatenate([y_train, y_candidate])
             model, _ = update_model(X_train, y_train, bounds_norm, kernel_type="Tanimoto", fit_y=False, FIT_METHOD=True)
 
-            n_experiments += qdyn[i]
+            n_experiments += qdyn
             timing += 1
 
             if success:
                 break
+
+            if max(y_train)[0] > best_y_now:
+                qdyn = qdyn - 1
+                best_y_now = max(y_train)[0]
 
         inter_med_n_experiments.append(n_experiments)
         inter_med_time.append(timing)
@@ -216,6 +221,17 @@ if NEW_static:
 
 else:
 
+    results_dyn = loadpkl("results_dynamic.pkl")
+    exp_count_dyn = np.array(results_dyn["exp_count"]).mean()
+    exp_count_std_dyn = np.array(results_dyn["exp_count"]).std()
+    timing_count_dyn = np.array(results_dyn["timing_count"]).mean()
+    timing_count_std_dyn = np.array(results_dyn["timing_count"]).std()
+    all_y_best_dyn = np.array(results_dyn["all_y_best"]).mean()
+    all_y_best_std_dyn = np.array(results_dyn["all_y_best"]).std()
+
+
+
+    #####
     results = loadpkl("results.pkl")
 
     alphas_q = results["alphas_q"]
@@ -240,12 +256,16 @@ else:
         fmt="o"
     )
 
+
+    plt.errorbar(exp_count_dyn, timing_count_dyn, xerr=exp_count_std_dyn, yerr=timing_count_std_dyn, fmt="o", label="dynamic")
+
     ax.set_xlabel("Number of experiments")
     ax.set_ylabel("Time")
     plt.legend()
     plt.savefig("pareto_front.png")
 
     pdb.set_trace()
+
     """
     alphas_q = np.load("alphas.npy")
     alphas_q = alphas_q.reshape((len(qarr), n_seeds, max_iterations))
