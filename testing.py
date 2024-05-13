@@ -66,6 +66,7 @@ n_best = 10000
 qarr = np.arange(1, max_batch_size+1, 1)
 
 
+
 NEW_DYNAMIC = True
 NEW_static = True
 
