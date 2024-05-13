@@ -67,7 +67,7 @@ qarr = np.arange(1, max_batch_size+1, 1)
 
 
 NEW_DYNAMIC = True
-NEW_static = False
+NEW_static = True
 
 
 if NEW_DYNAMIC:

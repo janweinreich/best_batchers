@@ -372,7 +372,7 @@ class formed:
         torch.manual_seed(SEED)
         np.random.seed(SEED)
 
-        indices_init = np.random.choice(np.arange(len(self.X)), size=200, replace=False)
+        indices_init = np.random.choice(np.arange(len(self.X)), size=1000, replace=False)
         indices_holdout = np.setdiff1d(np.arange(len(self.y)), indices_init)
 
         np.random.shuffle(indices_init)
