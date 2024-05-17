@@ -60,9 +60,9 @@ def linear_time(q):
     """
     for this to make sense, use a < 1 
     """
-    a = 0.1
+    a = 0.01
 
-    return 1+a*(q-1)
+    return a*(q-1)
 
 
 n_seeds = 15          
@@ -76,7 +76,7 @@ n_best = 10000
 qmax = 10
 max_time = linear_time(qmax)
 
-for seed in [1337]:
+for seed in [666]:
 
     print(f"seed: {seed}")
     model, X_train, y_train, X_pool, y_pool, bounds_norm = init_formed(seed)
@@ -108,20 +108,24 @@ for seed in [1337]:
             X_candidate = X_candidate.view(n_best, q, X_candidate.shape[2])
             best_acq_values = best_acq_values.view(n_best, q)
 
-            avg_acq_val_for_best = np.mean(np.array(best_acq_values[0]))
-            max_acq_val_for_best = np.max(np.array(best_acq_values[0]))
+            avg_acq_val_for_best = np.sum(np.array(best_acq_values[0]))
+            #max_acq_val_for_best = np.max(np.array(best_acq_values[0]))
 
-            scaling_factor = max_acq_val_for_best / max_time
+  
             # adjust for time
-            avg_acq_val_for_best = avg_acq_val_for_best - time_spent * scaling_factor
+            #print(q, avg_acq_val_for_best, max_acq_val_for_best, scaling_factor)
+            avg_acq_val_for_best = avg_acq_val_for_best * (1 - time_spent * 0.01)
+            # this number is arbitrary and should be adjusted
+            #- time_spent * scaling_factor
+            print(q, avg_acq_val_for_best)
             acq_values_q.append(avg_acq_val_for_best)
 
         min_q = np.argmax(acq_values_q) + 1
 
         # Magic ends here
-        pdb.set_trace()
-        exit()
-        sorted_indices = np.argsort(row_sums_2)[::-1]
+        #pdb.set_trace()
+        #exit()
+        #sorted_indices = np.argsort(row_sums_2)[::-1]
 
         # See how they actually look
         X_candidate = np.array(X_candidate[0])
